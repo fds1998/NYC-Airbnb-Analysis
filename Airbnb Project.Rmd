@@ -1,0 +1,111 @@
+---
+title: "Airbnb"
+author: "Ricardo Simpao"
+date: "3/30/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(rlang)
+library(devtools)
+
+library(wru)
+
+
+#outdated
+install_github("cdcrabtree/nomine")
+library(nomine)
+```
+
+```{r}
+airbnb = read.csv("Airbnb_NYC_2019.csv")
+airbnb = airbnb %>% mutate(host_name = as.character(host_name))
+names(airbnb)
+View(airbnb)
+```
+# Data Exploration
+
+```{r}
+sum(is.na(airbnb$name))
+
+colSums(is.na(airbnb)) %>% as.data.frame()
+```
+# Deal with NAs
+
+```{r}
+airbnb = airbnb %>% mutate(reviews_per_month = replace_na(airbnb$reviews_per_month, 0))
+#works
+#sum(is.na(test))
+```
+
+#Deal with listing ames
+```{r}
+head(airbnb$name)
+``` 
+
+#Deal with name of person
+```{r}
+head(airbnb$host_name,10)
+# Ãº
+dirt = c("Ãº","&","")
+
+#names with &
+needfix = airbnb[grep("&", airbnb$host_name),]
+
+#https://stackoverflow.com/questions/33683862/first-entry-from-string-split
+needfix$host_name = sapply(strsplit(needfix$host_name," &"),`[`,1)
+needfix$host_name = sapply(strsplit(needfix$host_name,"&"),`[`,1)
+needfix$host_name = sapply(strsplit(needfix$host_name,","),`[`,1)
+head(needfix)
+
+test = airbnb %>% 
+  mutate(host_name = case_when(
+      grepl("&",host_name) ~ strsplit(host_name," &")[[1]][1],
+      TRUE ~ .
+    )
+  )
+
+```
+
+#Histogram
+
+ [1] "id"                             "name"                          
+ [3] "host_id"                        "host_name"                     
+ [5] "neighbourhood_group"            "neighbourhood"                 
+ [7] "latitude"                       "longitude"                     
+ [9] "room_type"                      "price"                         
+[11] "minimum_nights"                 "number_of_reviews"             
+[13] "last_review"                    "reviews_per_month"             
+[15] "calculated_host_listings_count" "availability_365"
+
+```{r}
+library(ggplot2)
+
+#removed listings beyond the price of 1000
+airbnb_red = airbnb[airbnb$price < 1000,]
+ggplot(airbnb_red, aes(x = price, fill = neighbourhood_group)) + geom_histogram() + facet_grid(neighbourhood_group~.)
+
+sum(airbnb$price > 1000)
+nrow(airbnb)
+```
+
+```{r}
+top10_neighbourhood_bylistings = airbnb %>% 
+  group_by(neighbourhood) %>% 
+  tally() %>% 
+  arrange(desc(n)) %>% 
+  head(10)
+
+airbnb_toplist = airbnb %>% filter(neighbourhood %in% top10_neighbourhood_bylistings$neighbourhood)
+
+#https://stackoverflow.com/questions/16961921/plot-data-in-descending-order-as-appears-in-data-frame
+
+ggplot(top10_neighbourhood_bylistings, aes(x = reorder(neighbourhood, -n), y = n)) + geom_bar(stat = "identity") + coord_flip() + xlab("Top 10 Neighbourhoods by Listing")
+```
+
+```{r}
+
+ggplot(airbnb_red, aes(x = price, fill = neighbourhood_group)) + geom_histogram() + facet_grid(neighbourhood_group~.)
+```
