@@ -60,12 +60,6 @@ needfix$host_name = sapply(strsplit(needfix$host_name,"&"),`[`,1)
 needfix$host_name = sapply(strsplit(needfix$host_name,","),`[`,1)
 head(needfix)
 
-test = airbnb %>% 
-  mutate(host_name = case_when(
-      grepl("&",host_name) ~ strsplit(host_name," &")[[1]][1],
-      TRUE ~ .
-    )
-  )
 
 ```
 
@@ -102,10 +96,16 @@ airbnb_toplist = airbnb %>% filter(neighbourhood %in% top10_neighbourhood_bylist
 
 #https://stackoverflow.com/questions/16961921/plot-data-in-descending-order-as-appears-in-data-frame
 
-ggplot(top10_neighbourhood_bylistings, aes(x = reorder(neighbourhood, -n), y = n)) + geom_bar(stat = "identity") + coord_flip() + xlab("Top 10 Neighbourhoods by Listing")
+# Histogram of # of listings by neighborhood
+ggplot(top10_neighbourhood_bylistings, aes(x = reorder(neighbourhood, -n), y = n)) + geom_bar(stat = "identity") + coord_flip() + xlab("Neighbourhoods") + ggtitle("Top 10 Neighbourhoods by Listing")
 ```
 
 ```{r}
+airbnb_roomtype_nhgroups = airbnb %>% 
+  group_by(neighbourhood_group, room_type) %>% 
+  summarize(
+    n = n()
+  )
 
-ggplot(airbnb_red, aes(x = price, fill = neighbourhood_group)) + geom_histogram() + facet_grid(neighbourhood_group~.)
+ggplot(airbnb_roomtype_nhgroups, aes(fill = room_type, x = neighbourhood_group, y = n)) + geom_bar(stat = "identity", position = "dodge") + ggtitle("Bar chart of Room Type by Neighbourhood Group")
 ```
