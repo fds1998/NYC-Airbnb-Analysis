@@ -1,0 +1,33 @@
+```{r}
+library(tidyverse)
+library(geosphere)
+```
+
+```{r}
+airbnb = read.csv('Airbnb_NYC_2019.csv')
+subway = read.csv('nyc-transit-subway-entrance-and-exit-data.csv')
+```
+
+```{r}
+bnb_locations = tibble(listing = airbnb$id,
+                          alat = airbnb$latitude,
+                          along = airbnb$longitude)
+
+bnb_locations = distinct(bnb_locations, listing, .keep_all = TRUE)
+
+subway_locations = tibble(station = subway$Station.Name,
+                   slat = subway$Station.Latitude,
+                   slong = subway$Station.Longitude)
+
+subway_locations = distinct(subway_locations, station, .keep_all = TRUE)
+```
+
+```{r}
+bnb_test = bnb_locations %>% head()
+sub_test = subway_locations %>% head()
+```
+
+```{r}
+bnb_test
+sub_test
+```
