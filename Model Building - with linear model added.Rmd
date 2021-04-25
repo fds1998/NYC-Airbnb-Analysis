@@ -1,10 +1,3 @@
----
-title: "STA 160 Midterm Project - Model Building"
-author: 'Falak Shah (SID: 914663151)'
-date: "4/23/2021"
-output: html_document
----
-
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -17,6 +10,7 @@ library(corrgram)
 library(corrplot)
 library(mltools)
 library(data.table)
+library(boot) #for cross validation
 ```
 
 ```{r}
@@ -79,6 +73,8 @@ airbnb_wdist
 airbnb = read.csv('Airbnb_NYC_2019.csv')
 airbnb_all = cbind(airbnb, airbnb_wdist)
 glimpse(airbnb_all)
+
+#write.csv(airbnb_all,'C:/Users/dlsim/Documents/_College/1 UC Davis/4 Senior Year/Spr - STA 160 - Practice in Data Science/160 - Airbnb/AirbnbStudy/airbnb_wdistances.csv')
 ```
 
 
@@ -344,7 +340,71 @@ RMSE <- sqrt(mean(error^2))
 RMSE 
 
 # RMSE = 64.26
-
 ```
 
+
+
+######################### Logit Regression ##########################
+```{r}
+#logistic regression on price
+#affordable, medium, expensive, very expensive
+summary(airbnb_all$price)
+# affordable (10, 69)
+quantile(airbnb_all$price,0.25)
+# medium (69, 106)
+quantile(airbnb_all$price, 0.50)
+# expensive (106,269)
+quantile(airbnb_all$price, 0.75)
+# very expensive (269, )
+
+airbnb_all_pricelogit = airbnb_all %>%
+  mutate(affordable = case_when(
+    price < 69 ~ 1,
+    TRUE ~ 0
+  ), medium = case_when(
+    (price >= 69 & price < 106) ~ 1,
+    TRUE ~ 0
+  ), expensive = case_when(
+    (price >= 106 & price < 175) ~ 1,
+    TRUE ~ 0
+  ), very_expensive = case_when(
+    (price >= 175) ~ 1,
+    TRUE ~ 0
+  )
+)
+
+airbnb_all_pricelogit %>% transmute(price, affordable, medium, expensive, very_expensive) %>% colSums()
+
+View(airbnb_all_pricelogit)
+```
+
+```{r}
+#logistic regression using glm()
+
+set.seed(98)
+sample <- sample.int(n = nrow(airbnb_all_pricelogit), size = floor(.70*nrow(airbnb_all_pricelogit)), replace = F)
+
+
+training_data_logit <- airbnb_all_pricelogit[sample, ]
+test_data_logit  <- airbnb_all_pricelogit[-sample, ]
+
+logit_affordable = glm(affordable ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + availability_365 + miles, data = training_data_logit, family = "binomial")
+
+summary(logit_affordable)
+```
+
+```{r}
+predicted_affordable = predict.glm(logit_affordable, test_data_logit, type = "response")
+predicted_affordable = ifelse(predicted_affordable > 0.5, 1, 0)
+
+mean(predicted_affordable == test_data_logit$affordable)
+table(predicted_affordable,test_data_logit$affordable)
+```
+
+# Cross Validation
+```{r}
+logit_affordable2 = glm(affordable ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + availability_365 + miles, data = airbnb_all_pricelogit, family = "binomial")
+
+cv.glm(airbnb_all_pricelogit, logit_affordable2, K = 5)$delta
+``` 
 
