@@ -1,0 +1,189 @@
+```{r}
+library(randomForest)
+library(tidyverse)
+library(geosphere)
+library(parallel)
+library(corrgram)
+library(corrplot)
+library(mltools)
+library(data.table)
+library(glmnet)
+library(boot) #for cross validation
+```
+
+```{r}
+airbnb_all = read.csv('airbnb_wdistances.csv')
+
+# Checking for NAs in all columns
+
+sapply(airbnb_all, function(x) sum(is.na(x)))
+
+# Replacing NAs in reviews_per_month with 0
+
+airbnb_all = airbnb_all %>% mutate(reviews_per_month = replace_na(reviews_per_month, 0))
+
+summary(log(airbnb_all$price))
+
+
+
+# Getting rid of rows with price = 0  (Does not help i analysis)
+
+airbnb_all =(airbnb_all[(airbnb_all$price != 0), ])
+
+
+
+# Now we get rid of the columns which have no bearing on predicting price
+
+airbnb_all %>% glimpse()
+
+min_nights_365 = airbnb_all %>% filter(minimum_nights <= 365)
+min_nights_365 #48870 out of 48884
+
+ggplot(min_nights_365,aes(x = minimum_nights)) + geom_histogram() + scale_x_continuous(breaks = seq(0,365, by = 40)) # most nights within 30 
+
+min_nights_30 = airbnb_all %>% filter(minimum_nights <= 30) #48137
+
+# (48870-48137)/48884 = 1.5% of the data has min_nights > 30. Hence we get rid of those rows
+
+
+airbnb_model = airbnb_all %>% filter(minimum_nights <= 30)
+```
+
+# Airbnb new model
+```{r}
+airbnb_new_model = airbnb_model %>% filter(price <= 269)
+```
+
+
+### Creating dummy variables #####
+
+```{r}
+#library(mltools)
+#library(data.table)
+
+dummy_roomtype <- one_hot(as.data.table(airbnb_new_model$room_type))
+
+dummy_neighbourhoodgroup <- one_hot(as.data.table(airbnb_new_model$neighbourhood_group))
+
+dummy_neighbourhood <- one_hot(as.data.table(airbnb_new_model$neighbourhood))
+
+cbind(airbnb_new_model,dummy_roomtype)
+
+airbnb_lasso = airbnb_new_model %>% cbind(c(dummy_neighbourhoodgroup,dummy_roomtype,dummy_neighbourhood))
+
+airbnb_lasso = airbnb_lasso %>% select(-c(id,name,host_id,host_name,neighbourhood_group,neighbourhood,latitude,longitude,room_type,last_review,station))
+
+```
+
+
+
+### Splitting data ####
+
+```{r}
+
+set.seed(111)
+
+sample <- sample.int(n = nrow(airbnb_lasso), size = floor(.70*nrow(airbnb_new_model)), replace = F)
+training_lasso <- airbnb_lasso[sample, ]
+test_lasso  <- airbnb_lasso[-sample, ]
+
+
+```
+
+
+
+### Lasso ####
+
+```{r}
+library(boot)
+#Response Variable
+
+y.train <- training_lasso$price
+
+# Set of predictor variables
+
+x.train <- data.matrix(training_lasso %>% select(-c(price)))
+
+### Fitting the Lasso model ##### (alpha = 1)
+
+#perform k-fold cross-validation (with k = 10) to find optimal lambda value
+cv_model <- cv.glmnet(x.train, y.train, alpha = 1)
+
+#find optimal lambda value that minimizes test MSE
+best_lambda <- cv_model$lambda.min
+best_lambda
+
+# plot(cv_model)
+
+
+#find coefficients of best model
+best_model <- glmnet(x.train, y.train, alpha = 1, lambda = best_lambda)
+coef(best_model)
+
+
+
+y.test <- test_lasso$price
+
+# Set of predictor variables
+
+x.test <- data.matrix(test_lasso %>% select(-c(price)))
+
+y_predicted <- predict.glmnet(best_model, s = best_lambda, newx = x.test)
+
+head(y_predicted)
+
+
+
+# newX <- model.matrix(y.test ~ x.test , data = test_data_new)
+# fit_test<-predict(best_model, newX, s = best_lambda)
+
+error <- (test_lasso$price) - y_predicted
+
+RMSE <- sqrt(mean(error^2))
+
+RMSE  ### 38.98 (lesser than linear reg model 5)
+
+best_model$dev.ratio #0.559 R2. Better than simple linear reg model 5
+
+
+```
+
+## Random Forest ##
+
+```{r}
+set.seed(75)
+airbnb_rf = airbnb_lasso %>% as_tibble()
+
+tidy.name.vector <- make.names(names(airbnb_rf), unique=TRUE)
+names(airbnb_rf) <- tidy.name.vector
+# setnames(airbnb_rf, old = c('V1_Staten Island',
+#                             'V1_Entire home/apt',
+#                             'V1_Private room',
+#                             'V1_Shared room'),
+#          new = c('V1_Staten_Island',
+#                  'V1_Entire_home/apt',
+#                  'V1_Private_room',
+#                  'V1_Shared_room'), skip_absent = TRUE)
+
+#  select(-c('V1_Staten Island','V1_Entire home/apt','V1_Private room','V1_Shared room'))
+
+sample <- sample.int(n = nrow(airbnb_rf), size = floor(.70*nrow(airbnb_rf)), replace = F)
+training_rf <- airbnb_rf[sample, ]
+test_rf  <- airbnb_rf[-sample, ]
+
+
+```
+
+
+```{r}
+library(randomForest)
+#detach(airbnb_rf)
+
+rf_model <- randomForest(price ~ . ,
+                         data = training_rf ,
+                         mtry=15,
+                         importance=TRUE)
+
+rf_model
+
+```
