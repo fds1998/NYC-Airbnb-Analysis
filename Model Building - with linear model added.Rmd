@@ -429,6 +429,109 @@ logit_very_expensive = glm(very_expensive ~ neighbourhood_group + room_type + mi
 
 cv.glm(airbnb_all_pricelogit, logit_very_expensive, K = 5)$delta
 ``` 
+
+### Creating dummy variables #####
+
+```{r}
+#library(mltools)
+#library(data.table)
+
+dummy_roomtype <- one_hot(as.data.table(airbnb_new_model$room_type))
+
+dummy_neighbourhoodgroup <- one_hot(as.data.table(airbnb_new_model$neighbourhood_group))
+
+dummy_neighbourhood <- one_hot(as.data.table(airbnb_new_model$neighbourhood))
+
+cbind(airbnb_new_model,dummy_roomtype)
+
+airbnb_lasso = airbnb_new_model %>% cbind(c(dummy_neighbourhoodgroup,dummy_roomtype,dummy_neighbourhood))
+
+airbnb_lasso = airbnb_lasso %>% select(-c(id,name,host_id,host_name,neighbourhood_group,neighbourhood,latitude,longitude,room_type,last_review,station))
+
+```
+
+
+
+### Splitting data ####
+
+```{r}
+
+set.seed(111)
+
+sample <- sample.int(n = nrow(airbnb_lasso), size = floor(.70*nrow(airbnb_new_model)), replace = F)
+training_lasso <- airbnb_lasso[sample, ]
+test_lasso  <- airbnb_lasso[-sample, ]
+
+
+```
+
+
+
+### Lasso ####
+
+```{r}
+
+#Response Variable
+
+y.train <- training_lasso$price
+
+# Set of predictor variables
+
+x.train <- data.matrix(training_lasso %>% select(-c(price)))
+
+### Fitting the Lasso model ##### (alpha = 1)
+
+#perform k-fold cross-validation (with k = 10) to find optimal lambda value
+cv_model <- cv.glmnet(x.train, y.train, alpha = 1)
+
+#find optimal lambda value that minimizes test MSE
+best_lambda <- cv_model$lambda.min
+best_lambda
+
+# plot(cv_model)
+
+
+#find coefficients of best model
+best_model <- glmnet(x.train, y.train, alpha = 1, lambda = best_lambda)
+coef(best_model)
+
+
+
+y.test <- test_lasso$price
+
+# Set of predictor variables
+
+x.test <- data.matrix(test_lasso %>% select(-c(price)))
+
+y_predicted <- predict.glmnet(best_model, s = best_lambda, newx = x.test)
+
+head(y_predicted)
+
+
+
+# newX <- model.matrix(y.test ~ x.test , data = test_data_new)
+# fit_test<-predict(best_model, newX, s = best_lambda)
+
+error <- (test_lasso$price) - y_predicted
+
+RMSE <- sqrt(mean(error^2))
+
+RMSE  ### 38.98 (lesser than linear reg model 5)
+
+best_model$dev.ratio #0.559 R2. Better than simple linear reg model 5
+
+
+```
+
+
+
+
+
+
+
+
+
+
 ```{r}
 save.image(file = "AirbnbModelFitting_Linear.RData")
 ```
