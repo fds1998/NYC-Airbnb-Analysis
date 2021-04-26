@@ -48,6 +48,12 @@ distmatrix_test
 ```
 
 ```{r}
+getClosestStation = function(distmatrix, x){
+  station = colnames(distmatrix)[which.min(x)]
+  distance_miles = min(x)/1609.34
+  tibble(station = station, miles = distance_miles)
+}
+
 apply(distmatrix_test, 1, function(x) getClosestStation(distmatrix_test, x)) %>% bind_rows()
 ```
 #####################################################################
@@ -60,11 +66,7 @@ rownames(distmatrix) <- bnb_locations$listing
 
 
 ```{r}
-getClosestStation = function(distmatrix, x){
-  station = colnames(distmatrix)[which.min(x)]
-  distance_miles = min(x)/1609.34
-  tibble(station = station, miles = distance_miles)
-}
+
 airbnb_wdist = apply(distmatrix, 1, function(x) getClosestStation(distmatrix, x)) %>% bind_rows()
 airbnb_wdist
 ```
@@ -402,9 +404,31 @@ table(predicted_affordable,test_data_logit$affordable)
 ```
 
 # Cross Validation
+#first component = raw cross validation estimate of prediction error
+#second component = adjusted cross validation estimate
 ```{r}
 logit_affordable2 = glm(affordable ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + availability_365 + miles, data = airbnb_all_pricelogit, family = "binomial")
 
 cv.glm(airbnb_all_pricelogit, logit_affordable2, K = 5)$delta
 ``` 
 
+```{r}
+logit_medium = glm(medium ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + availability_365 + miles, data = airbnb_all_pricelogit, family = "binomial")
+
+cv.glm(airbnb_all_pricelogit, logit_medium, K = 5)$delta
+``` 
+
+```{r}
+logit_expensive = glm(expensive ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + availability_365 + miles, data = airbnb_all_pricelogit, family = "binomial")
+
+cv.glm(airbnb_all_pricelogit, logit_expensive, K = 5)$delta
+``` 
+
+```{r}
+logit_very_expensive = glm(very_expensive ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + availability_365 + miles, data = airbnb_all_pricelogit, family = "binomial")
+
+cv.glm(airbnb_all_pricelogit, logit_very_expensive, K = 5)$delta
+``` 
+```{r}
+save.image(file = "AirbnbModelFitting_Linear.RData")
+```
