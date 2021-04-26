@@ -523,7 +523,32 @@ best_model$dev.ratio #0.559 R2. Better than simple linear reg model 5
 
 ```
 
+## Random Forest ##
 
+```{r}
+set.seed(75)
+airbnb_rf = airbnb_lasso
+
+sample <- sample.int(n = nrow(airbnb_rf), size = floor(.70*nrow(airbnb_rf)), replace = F)
+training_rf <- airbnb_rf[sample, ]
+test_rf  <- airbnb_rf[-sample, ]
+
+
+```
+
+
+```{r}
+#library(randomForest)
+#detach(airbnb_rf)
+
+rf_model <- randomForest(price ~ . ,
+                         data = test ,
+                         mtry=15,
+                         importance=TRUE)
+
+rf_model
+
+```
 
 
 
