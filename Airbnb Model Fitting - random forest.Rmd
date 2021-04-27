@@ -187,3 +187,44 @@ rf_model <- randomForest(price ~ . ,
 rf_model
 
 ```
+
+```{r}
+
+tuneRF(training_rf %>% select(-c(price)), training_rf$price, ntreeTry = 1500, mtryStart = 15, stepFactor = 2, improve = 0.90, trace = TRUE, plot = TRUE)
+
+#mtry = 13  OOB error = 1603.575 
+# Searching left ...
+# mtry = 7 	OOB error = 1765.937 
+# -0.1012497 0.9 
+# Searching right ...
+# mtry = 26 	OOB error = 1447.578 
+# 0.09728064 0.9 
+#    mtry OOBError
+# 7     7 1765.937
+# 13   13 1603.575
+# 26   26 1447.578
+
+# mtry = 15  OOB error = 1568.295 
+# Searching left ...
+# mtry = 8 	OOB error = 1753.369 
+# -0.1180093 0.5 
+# Searching right ...
+# mtry = 30 	OOB error = 1432.045 
+# 0.0868779 0.5 
+#    mtry OOBError
+# 8     8 1753.369
+# 15   15 1568.295
+# 30   30 1432.045
+
+# mtry = 15  OOB error = 1521.356 
+# Searching left ...
+# mtry = 8 	OOB error = 1703.288 
+# -0.1195852 0.9 
+# Searching right ...
+# mtry = 30 	OOB error = 1399.274 
+# 0.08024556 0.9 
+#    mtry OOBError
+# 8     8 1703.288
+# 15   15 1521.356
+# 30   30 1399.274
+```
