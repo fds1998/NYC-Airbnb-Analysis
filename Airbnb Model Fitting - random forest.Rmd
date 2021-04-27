@@ -228,3 +228,49 @@ tuneRF(training_rf %>% select(-c(price)), training_rf$price, ntreeTry = 1500, mt
 # 15   15 1521.356
 # 30   30 1399.274
 ```
+## Random Forest ##
+
+```{r}
+set.seed(75)
+airbnb_rf = airbnb_lasso %>% as_tibble()
+tidy.name.vector <- make.names(names(airbnb_rf), unique=TRUE)
+names(airbnb_rf) <- tidy.name.vector
+
+sample <- sample.int(n = nrow(airbnb_rf), size = floor(.70*nrow(airbnb_rf)), replace = F)
+training_rf <- airbnb_rf[sample, ]
+test_rf  <- airbnb_rf[-sample, ]
+
+
+```
+
+
+```{r}
+library(randomForest)
+#detach(airbnb_rf)
+
+rf_model <- randomForest(price ~ . ,
+                         data = training_rf ,
+                         mtry=17,ntree = 1500,
+                         importance=TRUE)
+
+rf_model
+
+new_train = training_rf %>% select(c(-price))
+
+new_test <- test_rf %>% select(c(-price))
+
+y_predicted <- predict(rf_model, new_test)
+
+error <- (test_rf$price) - y_predicted
+
+RMSE <- sqrt(mean(error^2))
+
+RMSE
+
+# 45.01, 43.93 with 5
+# 55.16, 39.87 with 15
+# 56.03, 39.49 with 17
+
+# 56.06, 39.51 # with 1500 trees
+
+```
