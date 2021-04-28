@@ -61,6 +61,22 @@ airbnb_model = airbnb_all %>% filter(minimum_nights <= 30)
 airbnb_new_model = airbnb_model %>% filter(price <= 269)
 ```
 
+#Airbnb data with price ranges
+```{r}
+airbnb_all_priceClasses = airbnb_all %>%
+  mutate(price_class = case_when(
+    price < 69 ~ "affordable",
+    (price >= 69 & price < 106) ~ "medium",
+    (price >= 106 & price < 175) ~ "expensive",
+    (price >= 175) ~ "very_expensive",
+    TRUE ~ "NA"
+  )
+)
+#airbnb_all_priceClasses$price_class %>% table()
+```
+
+#Leaflet map of neighborhood groups + subway locations
+
 ```{r}
 pal = colorFactor(palette = c("red","green","blue", "purple","yellow"), domain = airbnb_all$neighbourhood_group)
 
@@ -72,6 +88,9 @@ leaflet(data = airbnb_all) %>%
             title = "Neighborhood groups", opacity = 1) %>%  addCircleMarkers(data = nysubways, ~ Station.Longitude, ~Station.Latitude, color = "orange", weight = 1, radius = 1, fillOpacity = 0.1, opacity = 1,
                    label = paste("Name:", nysubways$Station.Name))
 ```
+
+#Leaflet map of subway locations
+
 ```{r}
 glimpse(nysubways)
 table(nysubways$Station.Name)
@@ -81,5 +100,24 @@ table(nysubways$Station.Name)
 leaflet(data =nysubways) %>% 
   addProviderTiles(providers$CartoDB.DarkMatterNoLabels) %>% 
   addCircleMarkers(~ Station.Longitude, ~Station.Latitude, color = "orange", weight = 1, radius = 1, fillOpacity = 0.1, opacity = 0.1,
+                   label = paste("Name:", nysubways$Station.Name))
+```
+
+#Leaflet map of price classes with subway locations
+
+```{r}
+#airbnb_all_priceClasses
+pal = colorFactor(palette = c("green","yellow","orange","red"), domain = airbnb_all_priceClasses$price_class)
+
+leaflet(data = airbnb_all_priceClasses) %>% 
+  addProviderTiles(providers$CartoDB.DarkMatterNoLabels) %>% 
+  addCircleMarkers(~longitude, ~latitude, color = ~pal(price_class),
+                   weight = 1,
+                   radius = 1,
+                   fillOpacity = 0.1,
+                   opacity = 0.1,
+                   label = paste(airbnb_all_priceClasses$price))%>% 
+  addLegend("bottomright", pal = pal, values = ~ price_class,
+            title = "Price ranges", opacity = 1) %>% addCircleMarkers(data = nysubways, ~ Station.Longitude, ~Station.Latitude, color = "white", weight = 1, radius = 1, fillOpacity = 0.1, opacity = 1,
                    label = paste("Name:", nysubways$Station.Name))
 ```
