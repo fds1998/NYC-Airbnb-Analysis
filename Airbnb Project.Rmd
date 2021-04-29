@@ -1,233 +1,153 @@
 ```{r}
+library(randomForest)
 library(tidyverse)
-#install.packages("ggthemes")
-#install.packages("ggExtra")
-#install.packages("glmnet")
-#install.packages("kableExtra")
-#install.packages("leaflet")
-#install.packages("RColorBrewer")
-#install.packages("plotly")
-library(ggthemes)
-library(GGally)
-library(ggExtra)
-library(caret)
-library(glmnet)
+library(geosphere)
+library(parallel)
+library(corrgram)
 library(corrplot)
-library(leaflet)
-library(kableExtra)
-library(RColorBrewer)
-library(plotly)
-#install.packages("ggmap")
-library(ggmap)
-th <- theme_fivethirtyeight() + theme(axis.title = element_text(), axis.title.x = element_text()) # global theme for ggplot2 objects
-```
+library(mltools)
+library(data.table)
+library(glmnet)
+library(boot) #for cross validation
 
-
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
-```{r}
+#Visualization
 library(tidyverse)
-library(rlang)
-library(devtools)
-#library(wru)
-#outdated
-#install_github("cdcrabtree/nomine")
-library(nomine)
+library(sf)
+library(leaflet)
+library(viridis)
 ```
 
 ```{r}
-airbnb = read.csv("Airbnb_NYC_2019.csv")
-airbnb = airbnb %>% mutate(host_name = as.character(host_name))
-names(airbnb)
-View(airbnb)
+airbnb_all = read.csv('airbnb_wdistances.csv')
+nysubways = read.csv('nyc-transit-subway-entrance-and-exit-data.csv')
+ethnames = read.csv('EthnicityPredictions.csv')
+# Checking for NAs in all columns
+
+sapply(airbnb_all, function(x) sum(is.na(x)))
+
+#
+
+# Replacing NAs in reviews_per_month with 0
+
+airbnb_all = airbnb_all %>% mutate(reviews_per_month = replace_na(reviews_per_month, 0),
+                                   host_name = as.character(host_name))
+
 ```
 
-# Data Exploration
-
 ```{r}
-sum(is.na(airbnb$name))
-colSums(is.na(airbnb)) %>% as.data.frame()
+summary(log(airbnb_all$price))
+
+
+
+# Getting rid of rows with price = 0  (Does not help i analysis)
+
+airbnb_all =(airbnb_all[(airbnb_all$price != 0), ])
+
+
+
+# Now we get rid of the columns which have no bearing on predicting price
+
+airbnb_all %>% glimpse()
+
+min_nights_365 = airbnb_all %>% filter(minimum_nights <= 365)
+min_nights_365 #48870 out of 48884
+
+ggplot(min_nights_365,aes(x = minimum_nights)) + geom_histogram() + scale_x_continuous(breaks = seq(0,365, by = 40)) # most nights within 30 
+
+min_nights_30 = airbnb_all %>% filter(minimum_nights <= 30) #48137
+
+# (48870-48137)/48884 = 1.5% of the data has min_nights > 30. Hence we get rid of those rows
+
+
+airbnb_model = airbnb_all %>% filter(minimum_nights <= 30)
 ```
-# Deal with NAs
 
+# Airbnb new model
 ```{r}
-airbnb = airbnb %>% mutate(reviews_per_month = replace_na(airbnb$reviews_per_month, 0))
-#works
-#sum(is.na(test))
+airbnb_new_model = airbnb_model %>% filter(price <= 269)
 ```
 
-#Deal with listing ames
-```{r}
-head(airbnb$name)
-``` 
 
-#Deal with name of person
+#Preprocessing airbnb names
 ```{r}
-head(airbnb$host_name,10)
-# Ãº
 dirt = c("Ãº","&","")
-#names with &
-needfix = airbnb[grep("&", airbnb$host_name),]
-#https://stackoverflow.com/questions/33683862/first-entry-from-string-split
-needfix$host_name = sapply(strsplit(needfix$host_name," &"),`[`,1)
-needfix$host_name = sapply(strsplit(needfix$host_name,"&"),`[`,1)
-needfix$host_name = sapply(strsplit(needfix$host_name,","),`[`,1)
-head(needfix)
-test = airbnb %>% 
-  mutate(host_name = case_when(
-      grepl("&",host_name) ~ strsplit(host_name," &")[[1]][1],
-      TRUE ~ .
-    )
+
+airbnb_all$host_name_clean = airbnb_all %>% transmute(host_name = case_when(
+    grepl(" (And|Or|&) ", host_name) ~ gsub("(.+?)(And|Or|&).*", "\\1", host_name),
+    grepl("(&|\\+|/)", host_name) ~ gsub("(.+?)(\\+).*", "\\1", host_name),
+    TRUE ~ host_name
+  ))
+
+#write.csv(airbnb_all, 'airbnb_all_ethn.csv')
+#View(airbnb_all %>% select(host_name, host_name_clean))
+```
+
+```{r}
+airbnb_ethnames = airbnb_all %>% mutate(ethnicity = ethnames$race)
+View(airbnb_ethnames %>% select(host_name, ethnicity))
+```
+
+```{r}
+
+```
+
+#Airbnb data with price ranges
+```{r}
+airbnb_all_priceClasses = airbnb_all %>%
+  mutate(price_class = case_when(
+    price < 69 ~ "affordable",
+    (price >= 69 & price < 106) ~ "medium",
+    (price >= 106 & price < 175) ~ "expensive",
+    (price >= 175) ~ "very_expensive",
+    TRUE ~ "NA"
   )
+)
+#airbnb_all_priceClasses$price_class %>% table()
 ```
 
-
+#Leaflet map of neighborhood groups + subway locations
 
 ```{r}
-library(ggplot2)
-#removed listings beyond the price of 1000
-airbnb_red = airbnb[airbnb$price < 1000,]
-ggplot(airbnb_red, aes(x = price, fill = neighbourhood_group)) + geom_histogram() + facet_grid(neighbourhood_group~.)
-sum(airbnb$price > 1000)
-nrow(airbnb)
+pal = colorFactor(palette = c("red","green","blue", "purple","yellow"), domain = airbnb_all$neighbourhood_group)
+
+leaflet(data = airbnb_all) %>% 
+  addProviderTiles(providers$CartoDB.DarkMatterNoLabels) %>% 
+  addCircleMarkers(~longitude, ~latitude, color = ~pal(neighbourhood_group), weight = 1, radius = 1, fillOpacity = 0.1, opacity = 0.1,
+                   label = paste("Name:", airbnb$name)) %>% 
+  addLegend("bottomright", pal = pal, values = ~ neighbourhood_group,
+            title = "Neighborhood groups", opacity = 1) %>%  addCircleMarkers(data = nysubways, ~ Station.Longitude, ~Station.Latitude, color = "orange", weight = 1, radius = 1, fillOpacity = 0.1, opacity = 1,
+                   label = paste("Name:", nysubways$Station.Name))
 ```
 
-
+#Leaflet map of subway locations
 
 ```{r}
-top10_neighbourhood_bylistings = airbnb %>% 
-  group_by(neighbourhood) %>% 
-  tally() %>% 
-  arrange(desc(n)) %>% 
-  head(10)
-airbnb_toplist = airbnb %>% filter(neighbourhood %in% top10_neighbourhood_bylistings$neighbourhood)
-#https://stackoverflow.com/questions/16961921/plot-data-in-descending-order-as-appears-in-data-frame
-ggplot(top10_neighbourhood_bylistings, aes(x = reorder(neighbourhood, n), y = n)) + geom_bar(stat = "identity", fill = "steelblue") + coord_flip() + xlab("Neighbourhood") + ylab("Number of listings") + theme_minimal() + geom_text(aes(label=n), vjust=0.3, hjust = 1.2, size=3.5,color = "white") + ggtitle("Top 10 Neighbourhoods by Listing")
+glimpse(nysubways)
+table(nysubways$Station.Name)
 
+#pal = colorFactor(palette = c("red","green","blue", "purple","yellow"), domain = airbnb_all$neighbourhood_group)
+
+leaflet(data =nysubways) %>% 
+  addProviderTiles(providers$CartoDB.DarkMatterNoLabels) %>% 
+  addCircleMarkers(~ Station.Longitude, ~Station.Latitude, color = "orange", weight = 1, radius = 1, fillOpacity = 0.1, opacity = 0.1,
+                   label = paste("Name:", nysubways$Station.Name))
 ```
 
-
+#Leaflet map of price classes with subway locations
 
 ```{r}
-ggplot(airbnb_red, aes(x = price, fill = neighbourhood_group)) + geom_histogram() + facet_grid(neighbourhood_group~.)
+#airbnb_all_priceClasses
+pal = colorFactor(palette = c("green","yellow","orange","red"), domain = airbnb_all_priceClasses$price_class)
+
+leaflet(data = airbnb_all_priceClasses) %>% 
+  addProviderTiles(providers$CartoDB.DarkMatterNoLabels) %>% 
+  addCircleMarkers(~longitude, ~latitude, color = ~pal(price_class),
+                   weight = 1,
+                   radius = 1,
+                   fillOpacity = 0.1,
+                   opacity = 0.1,
+                   label = paste(airbnb_all_priceClasses$price))%>% 
+  addLegend("bottomright", pal = pal, values = ~ price_class,
+            title = "Price ranges", opacity = 1) %>% addCircleMarkers(data = nysubways, ~ Station.Longitude, ~Station.Latitude, color = "white", weight = 1, radius = 1, fillOpacity = 0.1, opacity = 1,
+                   label = paste("Name:", nysubways$Station.Name))
 ```
-
-
-
-
-```{r}
-roomtype_byneighbourhood <- airbnb %>% group_by(neighbourhood_group,room_type) %>% tally()
-#roomtype_byneighbourhood
-
-ggplot(roomtype_byneighbourhood, aes(fill=room_type, y=n, x=neighbourhood_group)) + 
-    geom_bar(position="dodge", stat="identity") + ggtitle("Room Type for each Neighbourhood Group") + xlab("Neighbourhood Group") + ylab("Number of Listings")
-```
-
-
-
-
-```{r}
-
-# Distribution of log Price
-
-ggplot(airbnb, aes(price)) +
-  geom_histogram(bins = 30, aes(y = ..density..), fill = "blue") + 
-  geom_density(alpha = 0.2, fill = "white") +
-  ggtitle("Transformed distribution of price (log(price))") +
-  geom_vline(xintercept = round(mean(airbnb$price), 2), size = 2, linetype = 1) +
-  scale_x_log10() +  geom_vline(xintercept = round(median(airbnb$price), 2), size = 2, linetype = 2) +
-  annotate("text", x = 1800, y = 0.75,label = paste("Mean price = ", "$",paste0(round(mean(airbnb$price), 2))),
-           color =  "red", size = 6)
-```
-
-
-```{r}
-
-ggmap::register_google(key = "AIzaSyDskGqnnm9FoVOGXWKbxh88vzF8k89UAjY")
-
-p <- ggmap(get_googlemap(center = c(lon = -122.335167, lat = 47.608013),
-                    zoom = 11, scale = 2,
-                    maptype ='terrain',
-                    color = 'color'))
-p + geom_point(aes(x = Longitude, y = Latitude,  colour = Initial.Type.Group), size = 0.5) + 
-  theme(legend.position="bottom")
-
-get_local_spot <-  get_map("Durham North Carolina", maptype = "roadmap", zoom = 17) 
-ggmap(get_local_spot)
-
-```
-
-
-```{r}
-geocode("New York City")
-map <- get_googlemap(center = c(-74, 40), zoom = 10)
-
-ggmap(map) + geom_point(data = airbnb, aes(x = longitude, y = latitude))
-
-
-p <- ggmap(get_googlemap("New York City",
-                    zoom = 15, scale = 2,
-                    maptype ='terrain',
-                    color = 'color'))
-```
-
-
-```{r}
-p + geom_point(aes(x = longitude, y = latitude), data = airbnb, size = 0.5,fill=airbnb$price) + 
-  theme(legend.position="bottom")
-
-
-```
-
-
-```{r}
-library(maps)
-library(mapproj)
-USA <- map_data("world") %>% filter(region=="USA")
-ggplot() +
-  geom_polygon(data = USA, aes(x=long, y = lat, group = group), fill="grey", alpha=0.3) +
-  geom_point( data=airbnb, aes(x=longitude, y=latitude)) +
-  theme_void() + ylim(50,59) + coord_map() 
- 
-```
-
-
-```{r}
-
-library(reticulate)
-use_python('C:/Users/Falak/AppData/Local/Continuum/anaconda3/')
-
-```
-
-```{python}
-import numpy as np
-import pandas as pd
-import seaborn as sns
-import plotnine
-from plotnine import *
-import matplotlib as mpl
-import matplotlib.pyplot as plt
-import gmaps
-
-```
-
-```{r}
-conda_install('re-reticulate', packages = 'numpy')
-```
-
-```{r}
-#library(viridis)
-ggplot(airbnb,aes(x = longitude, y = latitude, color = neighbourhood_group)) + geom_point()+scale_color_brewer(palette = "Dark2")
-```
-
-```{r}
-  ggplot(airbnb,aes(x = price, fill = neighbourhood_group)) +
-  geom_histogram(bins = 40) +
-  scale_x_log10() + 
-  ggtitle("Summary of price distributions") +
-  facet_wrap(~room_type + neighbourhood_group)
-```
-
