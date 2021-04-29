@@ -75,6 +75,7 @@ dirt = c("Ãº","&","")
 airbnb_all$host_name_clean = airbnb_all %>% transmute(host_name = case_when(
     grepl(" (And|Or|&) ", host_name) ~ gsub("(.+?)(And|Or|&).*", "\\1", host_name),
     grepl("(&|\\+|/)", host_name) ~ gsub("(.+?)(\\+).*", "\\1", host_name),
+    grepl("Ãº",host_name) ~ gsub("a","",host_name),
     TRUE ~ host_name
   ))
 
