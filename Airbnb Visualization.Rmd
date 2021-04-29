@@ -20,15 +20,21 @@ library(viridis)
 ```{r}
 airbnb_all = read.csv('airbnb_wdistances.csv')
 nysubways = read.csv('nyc-transit-subway-entrance-and-exit-data.csv')
-
+ethnames = read.csv('EthnicityPredictions.csv')
 # Checking for NAs in all columns
 
 sapply(airbnb_all, function(x) sum(is.na(x)))
 
+#
+
 # Replacing NAs in reviews_per_month with 0
 
-airbnb_all = airbnb_all %>% mutate(reviews_per_month = replace_na(reviews_per_month, 0))
+airbnb_all = airbnb_all %>% mutate(reviews_per_month = replace_na(reviews_per_month, 0),
+                                   host_name = as.character(host_name))
 
+```
+
+```{r}
 summary(log(airbnb_all$price))
 
 
@@ -59,6 +65,30 @@ airbnb_model = airbnb_all %>% filter(minimum_nights <= 30)
 # Airbnb new model
 ```{r}
 airbnb_new_model = airbnb_model %>% filter(price <= 269)
+```
+
+
+#Preprocessing airbnb names
+```{r}
+dirt = c("Ãº","&","")
+
+airbnb_all$host_name_clean = airbnb_all %>% transmute(host_name = case_when(
+    grepl(" (And|Or|&) ", host_name) ~ gsub("(.+?)(And|Or|&).*", "\\1", host_name),
+    grepl("(&|\\+|/)", host_name) ~ gsub("(.+?)(\\+).*", "\\1", host_name),
+    TRUE ~ host_name
+  ))
+
+write.csv(airbnb_all, 'airbnb_all_ethn.csv', fileEncoding = 'UTF-8')
+#View(airbnb_all %>% select(host_name, host_name_clean))
+```
+
+```{r}
+airbnb_ethnames = airbnb_all %>% mutate(ethnicity = ethnames$race)
+View(airbnb_ethnames %>% select(host_name, ethnicity))
+```
+
+```{r}
+
 ```
 
 #Airbnb data with price ranges
