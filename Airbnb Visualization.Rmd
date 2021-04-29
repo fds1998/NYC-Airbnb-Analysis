@@ -18,6 +18,7 @@ library(viridis)
 ```
 
 ```{r}
+airbnb = read.csv('Airbnb_NYC_2019.csv')
 airbnb_all = read.csv('airbnb_wdistances.csv')
 nysubways = read.csv('nyc-transit-subway-entrance-and-exit-data.csv')
 ethnames = read.csv('EthnicityPredictions.csv')
@@ -30,8 +31,11 @@ sapply(airbnb_all, function(x) sum(is.na(x)))
 # Replacing NAs in reviews_per_month with 0
 
 airbnb_all = airbnb_all %>% mutate(reviews_per_month = replace_na(reviews_per_month, 0),
-                                   host_name = as.character(host_name))
-
+                                   host_name = as.character(host_name),
+                                   ethnicity = as.character(ethnames$race))
+table(airbnb_all$ethnicity)
+head(airbnb_all %>% select(host_name,ethnicity))
+head(ethnames %>% select(1:2))
 ```
 
 ```{r}
@@ -82,7 +86,7 @@ airbnb_all = airbnb_all %>% mutate(host_name_clean = case_when(
 
 write.csv(airbnb_all, 'airbnb_all_ethn.csv')
 #View(airbnb_all %>% select(host_name, host_name_clean))
-airbnb_all
+#airbnb_all
 ```
 
 ```{r}
@@ -90,9 +94,6 @@ airbnb_ethnames = airbnb_all %>% mutate(ethnicity = ethnames$race)
 View(airbnb_ethnames %>% select(host_name, ethnicity))
 ```
 
-```{r}
-
-```
 
 #Airbnb data with price ranges
 ```{r}
@@ -153,4 +154,20 @@ leaflet(data = airbnb_all_priceClasses) %>%
   addLegend("bottomright", pal = pal, values = ~ price_class,
             title = "Price ranges", opacity = 1) %>% addCircleMarkers(data = nysubways, ~ Station.Longitude, ~Station.Latitude, color = "white", weight = 1, radius = 1, fillOpacity = 0.1, opacity = 1,
                    label = paste("Name:", nysubways$Station.Name))
+```
+
+```{r}
+length(table(airbnb_all$ethnicity))
+pal = colorFactor(palette = c("green","yellow","orange","red","blue"), domain = airbnb_all$ethnicity)
+
+leaflet(data = airbnb_all) %>% 
+  addProviderTiles(providers$CartoDB.DarkMatterNoLabels) %>% 
+  addCircleMarkers(~longitude, ~latitude, color = ~factpal(ethnicity),
+                   weight = 1,
+                   radius = 1,
+                   fillOpacity = 0.1,
+                   opacity = 0.1,
+                   label = paste(airbnb_all$ethnicity))%>% 
+  addLegend("bottomright", pal = pal, values = ~ ethnicity,
+            title = "Ethnicities", opacity = 1)
 ```
