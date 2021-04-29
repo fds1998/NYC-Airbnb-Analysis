@@ -74,13 +74,12 @@ dirt = c("Ãº","&","")
 
 airbnb_all$host_name_clean = airbnb_all %>% transmute(host_name = case_when(
     grepl(" (And|Or|&) ", host_name) ~ gsub("(.+?)(And|Or|&).*", "\\1", host_name),
-    grepl("(&|\\+|\\/)", host_name) ~ gsub("(.+?)(\\+).*", "\\1", host_name),
-    grepl("Ãº",host_name) ~ gsub("Ãº","a",host_name),
-    grepl("Ã©",host_name) ~ gsub("Ã©", "ae", host_name),
+    grepl("(&|\\+|/)", host_name) ~ gsub("(.+?)(\\+).*", "\\1", host_name),
+    grepl("Ãº",host_name) ~ gsub("a","",host_name),
     TRUE ~ host_name
   ))
 
-write.csv(airbnb_all, 'airbnb_all_ethn.csv')
+write.csv(airbnb_all, 'airbnb_all_ethn.csv', fileEncoding = 'UTF-8')
 #View(airbnb_all %>% select(host_name, host_name_clean))
 ```
 
