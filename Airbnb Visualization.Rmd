@@ -14,7 +14,16 @@ library(boot) #for cross validation
 library(tidyverse)
 library(sf)
 library(leaflet)
+library(htmlwidgets)
+library(webshot)
 library(viridis)
+library(highcharter)
+library(usethis)
+library(devtools)
+#install_github("wch/webshot")
+#webshot::install_phantomjs()
+library(webshot)
+library(mapview)
 ```
 
 ```{r}
@@ -89,11 +98,6 @@ write.csv(airbnb_all, 'airbnb_all_ethn.csv')
 #airbnb_all
 ```
 
-```{r}
-airbnb_ethnames = airbnb_all %>% mutate(ethnicity = ethnames$race)
-View(airbnb_ethnames %>% select(host_name, ethnicity))
-```
-
 
 #Airbnb data with price ranges
 ```{r}
@@ -114,27 +118,31 @@ airbnb_all_priceClasses = airbnb_all %>%
 ```{r}
 pal = colorFactor(palette = c("red","green","blue", "purple","yellow"), domain = airbnb_all$neighbourhood_group)
 
-leaflet(data = airbnb_all) %>% 
+map_ng_subs = leaflet(data = airbnb_all) %>% 
   addProviderTiles(providers$CartoDB.DarkMatterNoLabels) %>% 
   addCircleMarkers(~longitude, ~latitude, color = ~pal(neighbourhood_group), weight = 1, radius = 1, fillOpacity = 0.1, opacity = 0.1,
                    label = paste("Name:", airbnb$name)) %>% 
   addLegend("bottomright", pal = pal, values = ~ neighbourhood_group,
             title = "Neighborhood groups", opacity = 1) %>%  addCircleMarkers(data = nysubways, ~ Station.Longitude, ~Station.Latitude, color = "orange", weight = 1, radius = 1, fillOpacity = 0.1, opacity = 1,
                    label = paste("Name:", nysubways$Station.Name))
+
+mapshot(map_ng_subs, file = paste0(getwd(),"/NeighborhoodGroup_Subs_Map.png"))
 ```
 
 #Leaflet map of subway locations
 
 ```{r}
-glimpse(nysubways)
-table(nysubways$Station.Name)
+#glimpse(nysubways)
+#table(nysubways$Station.Name)
 
 #pal = colorFactor(palette = c("red","green","blue", "purple","yellow"), domain = airbnb_all$neighbourhood_group)
 
-leaflet(data =nysubways) %>% 
+map_subs = leaflet(data =nysubways) %>% 
   addProviderTiles(providers$CartoDB.DarkMatterNoLabels) %>% 
   addCircleMarkers(~ Station.Longitude, ~Station.Latitude, color = "orange", weight = 1, radius = 1, fillOpacity = 0.1, opacity = 0.1,
                    label = paste("Name:", nysubways$Station.Name))
+
+mapshot(map_subs, file = paste0(getwd(),"/subway_map.png"))
 ```
 
 #Leaflet map of price classes with subway locations
@@ -143,7 +151,7 @@ leaflet(data =nysubways) %>%
 #airbnb_all_priceClasses
 pal = colorFactor(palette = c("green","yellow","orange","red"), domain = airbnb_all_priceClasses$price_class)
 
-leaflet(data = airbnb_all_priceClasses) %>% 
+map_price_subs = leaflet(data = airbnb_all_priceClasses) %>% 
   addProviderTiles(providers$CartoDB.DarkMatterNoLabels) %>% 
   addCircleMarkers(~longitude, ~latitude, color = ~pal(price_class),
                    weight = 1,
@@ -154,15 +162,36 @@ leaflet(data = airbnb_all_priceClasses) %>%
   addLegend("bottomright", pal = pal, values = ~ price_class,
             title = "Price ranges", opacity = 1) %>% addCircleMarkers(data = nysubways, ~ Station.Longitude, ~Station.Latitude, color = "white", weight = 1, radius = 1, fillOpacity = 0.1, opacity = 1,
                    label = paste("Name:", nysubways$Station.Name))
+mapshot(map_price_subs, file = paste0(getwd(),"/Price_Subs_Map.png"))
 ```
+```{r}
+#map of room types
+
+pal = colorFactor(palette = c("blue","yellow","red"), domain = airbnb_all$room_type)
+
+map_roomtype = leaflet(data = airbnb_all) %>% 
+  addProviderTiles(providers$CartoDB.DarkMatterNoLabels) %>% 
+  addCircleMarkers(~longitude, ~latitude, color = ~pal(room_type),
+                   weight = 1,
+                   radius = 1,
+                   fillOpacity = 0.1,
+                   opacity = 0.1,
+                   label = paste(airbnb_all$room_type))%>% 
+  addLegend("bottomright", pal = pal, values = ~ room_type,
+            title = "Price ranges", opacity = 1) %>% addCircleMarkers(data = nysubways, ~ Station.Longitude, ~Station.Latitude, color = "white", weight = 1, radius = 1, fillOpacity = 0.1, opacity = 1,
+                   label = paste("Name:", nysubways$Station.Name))
+
+mapshot(map_roomtype, file = paste0(getwd(),"/RoomType_Map.png"))
+```
+
 
 ```{r}
 length(table(airbnb_all$ethnicity))
-pal = colorFactor(palette = c("green","yellow","orange","red","blue"), domain = airbnb_all$ethnicity)
+pal = colorFactor(palette = rainbow(length(unique(airbnb_all$ethnicity))), domain = airbnb_all$ethnicity)
 
-leaflet(data = airbnb_all) %>% 
+map_ethn = leaflet(data = airbnb_all) %>% 
   addProviderTiles(providers$CartoDB.DarkMatterNoLabels) %>% 
-  addCircleMarkers(~longitude, ~latitude, color = ~factpal(ethnicity),
+  addCircleMarkers(~longitude, ~latitude, color = ~pal(ethnicity),
                    weight = 1,
                    radius = 1,
                    fillOpacity = 0.1,
@@ -170,4 +199,83 @@ leaflet(data = airbnb_all) %>%
                    label = paste(airbnb_all$ethnicity))%>% 
   addLegend("bottomright", pal = pal, values = ~ ethnicity,
             title = "Ethnicities", opacity = 1)
+
+mapshot(map_ethn, file = paste0(getwd(),"/Ethnicity_Map.png"))
+```
+
+```{r}
+ggplot(data = airbnb_all, aes(x = factor(1), fill = ethnicity)) +
+  geom_bar(width = 1) + coord_polar("y")
+```
+```{r}
+reduced_ethn_df = airbnb_all %>% 
+  filter(ethnicity %in% c("GreaterEuropean,British", "GreaterEuropean,EastEuropean", "GreaterAfrican,Africans","GreaterAfrican,Muslim"))
+
+#unique(reduced_ethn_df$ethnicity)
+```
+
+```{r}
+pal = colorFactor(palette = rainbow(length(unique(reduced_ethn_df$ethnicity))), domain = reduced_ethn_df$ethnicity)
+
+map_redEthn = leaflet(data = reduced_ethn_df) %>% 
+  addProviderTiles(providers$CartoDB.DarkMatterNoLabels) %>% 
+  addCircleMarkers(~longitude, ~latitude, color = ~pal(ethnicity),
+                   weight = 1,
+                   radius = 1,
+                   fillOpacity = 0.1,
+                   opacity = 0.1,
+                   label = paste(reduced_ethn_df$ethnicity))%>% 
+  addLegend("bottomright", pal = pal, values = ~ ethnicity,
+            title = "Ethnicities", opacity = 1)
+
+mapshot(map_redEthn, file = paste0(getwd(),"/ReducedEthncity.png"))
+```
+
+```{r}
+# short-rental, medium-rental, long-rental 
+summary(airbnb_all$availability_365)
+
+airbnb_all = airbnb_all %>%
+  mutate(availability_class = case_when(
+    availability_365 <= 30 ~ "short",
+    (availability_365 > 30 & availability_365 <= 180) ~ "medium",
+    (availability_365 > 180) ~ "long",
+    TRUE ~ ""
+  )
+)
+```
+
+```{r}
+
+pal = colorFactor(palette = c("green","yellow","red"), domain = airbnb_all$availability_class)
+
+map_availtypes = leaflet(data = airbnb_all) %>% 
+  addProviderTiles(providers$CartoDB.DarkMatterNoLabels) %>% 
+  addCircleMarkers(~longitude, ~latitude, color = ~pal(availability_class),
+                   weight = 1,
+                   radius = 1,
+                   fillOpacity = 0.1,
+                   opacity = 0.1,
+                   label = paste(airbnb_all$availability_class))%>% 
+  addLegend("bottomright", pal = pal, values = ~ availability_class,
+            title = "Availability Types", opacity = 1)
+
+mapshot(map_availtypes, file = paste0(getwd(),"/Availability_Map.png"))
+```
+
+```{r}
+summary(airbnb_all$miles)
+hist(airbnb_all$miles)
+pal = colorNumeric(palette = "Blues", domain = airbnb_all$miles)
+
+leaflet(data = airbnb_all) %>% 
+  addProviderTiles(providers$CartoDB.DarkMatterNoLabels) %>% 
+  addCircleMarkers(~longitude, ~latitude, color = ~pal(airbnb_all$miles),
+                   weight = 1,
+                   radius = 1,
+                   fillOpacity = 0.1,
+                   opacity = 0.1,
+                   label = paste(airbnb_all$miles))%>% 
+  addLegend("bottomright", pal = pal, values = ~ miles,
+            title = "Availability Types", opacity = 1)
 ```
