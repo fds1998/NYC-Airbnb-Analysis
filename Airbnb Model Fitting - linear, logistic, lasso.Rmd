@@ -430,6 +430,140 @@ logit_very_expensive = glm(very_expensive ~ neighbourhood_group + room_type + mi
 cv.glm(airbnb_all_pricelogit, logit_very_expensive, K = 5)$delta
 ``` 
 
+#### Logistic regression for availabilty ######
+
+```{r}
+
+#logistic regression on availability
+# short-rental, medium-rental, long-rental 
+summary(airbnb_all$availability_365)
+
+airbnb_all_availabiltiylogit = airbnb_all %>%
+  mutate(short_rental = case_when(
+    availability_365 <= 30 ~ 1,
+    TRUE ~ 0
+  ), medium_rental= case_when(
+    (availability_365 > 30 & availability_365 <= 180) ~ 1,
+    TRUE ~ 0
+  ), long_rental = case_when(
+    (availability_365 > 180) ~ 1,
+    TRUE ~ 0
+  )
+)
+airbnb_all_availabiltiylogit %>% transmute(availability_365, short_rental, medium_rental, long_rental) %>% colSums()
+
+#View(airbnb_all_availabiltiylogit)
+
+
+
+```
+
+```{r}
+#logistic regression using glm()
+
+set.seed(123)
+sample <- sample.int(n = nrow(airbnb_all_availabiltiylogit), size = floor(.70*nrow(airbnb_all_availabiltiylogit)), replace = F)
+training_data_logit <- airbnb_all_availabiltiylogit[sample, ]
+test_data_logit  <- airbnb_all_availabiltiylogit[-sample, ]
+logit_short_rental = glm(short_rental ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + miles, data = training_data_logit, family = "binomial")
+
+
+
+
+```
+
+
+
+```{r}
+predicted_short_rental = predict.glm(logit_short_rental, test_data_logit, type = "response")
+predicted_short_rental = ifelse(predicted_short_rental > 0.5, 1, 0)
+mean(predicted_short_rental == test_data_logit$short_rental)
+table(predicted_short_rental,test_data_logit$short_rental)
+
+```
+
+# Cross Validation
+```{r}
+
+logit_short_rental2 = glm(short_rental ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + miles, data = airbnb_all_availabiltiylogit, family = "binomial")
+cv.glm(airbnb_all_availabiltiylogit, logit_short_rental2, K = 5)$delta
+
+#summary(airbnb_all_availabiltiylogit$short_rental)
+
+``` 
+
+
+
+
+# Medium Rental
+
+
+```{r}
+#logistic regression using glm()
+
+set.seed(123)
+sample <- sample.int(n = nrow(airbnb_all_availabiltiylogit), size = floor(.70*nrow(airbnb_all_availabiltiylogit)), replace = F)
+training_data_logit <- airbnb_all_availabiltiylogit[sample, ]
+test_data_logit  <- airbnb_all_availabiltiylogit[-sample, ]
+logit_medium_rental = glm(medium_rental ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + miles, data = training_data_logit, family = "binomial")
+
+
+
+```
+
+
+
+```{r}
+predicted_medium_rental = predict.glm(logit_medium_rental, test_data_logit, type = "response")
+predicted_medium_rental = ifelse(predicted_medium_rental > 0.5, 1, 0)
+mean(predicted_medium_rental == test_data_logit$medium_rental)
+table(predicted_medium_rental,test_data_logit$medium_rental)
+
+```
+
+# Cross Validation
+```{r}
+
+logit_medium_rental2 = glm(medium_rental ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + miles, data = airbnb_all_availabiltiylogit, family = "binomial")
+cv.glm(airbnb_all_availabiltiylogit, logit_medium_rental2, K = 5)$delta
+
+``` 
+
+
+# Long rental 
+
+```{r}
+#logistic regression using glm()
+
+set.seed(123)
+sample <- sample.int(n = nrow(airbnb_all_availabiltiylogit), size = floor(.70*nrow(airbnb_all_availabiltiylogit)), replace = F)
+training_data_logit <- airbnb_all_availabiltiylogit[sample, ]
+test_data_logit  <- airbnb_all_availabiltiylogit[-sample, ]
+logit_long_rental = glm(long_rental ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + miles, data = training_data_logit, family = "binomial")
+
+
+
+```
+
+
+
+```{r}
+predicted_long_rental = predict.glm(logit_long_rental, test_data_logit, type = "response")
+predicted_long_rental = ifelse(predicted_long_rental > 0.5, 1, 0)
+mean(predicted_long_rental == test_data_logit$long_rental)
+table(predicted_long_rental,test_data_logit$long_rental)
+
+```
+
+# Cross Validation
+```{r}
+
+logit_long_rental2 = glm(long_rental ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + miles, data = airbnb_all_availabiltiylogit, family = "binomial")
+cv.glm(airbnb_all_availabiltiylogit, logit_long_rental2, K = 5)$delta
+
+``` 
+
+
 ### Creating dummy variables #####
 
 ```{r}
