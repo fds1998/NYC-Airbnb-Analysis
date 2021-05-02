@@ -1,10 +1,3 @@
----
-title: "STA 160 Midterm Project - Model Building"
-author: 'Falak Shah (SID: 914663151)'
-date: "4/23/2021"
-output: html_document
----
-
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -161,7 +154,7 @@ min_nights_365 #48870 out of 48884
 
 ggplot(min_nights_365,aes(x = minimum_nights)) + geom_histogram() + scale_x_continuous(breaks = seq(0,365, by = 40)) + ggtitle("Distribution of Minimum Nights") # most nights within 30 
 
-dev.copy(png,'min_nights.png')
+dev.copy(png,'min_nights_365.png')
 dev.off()
 
 min_nights_30 = airbnb_all %>% filter(minimum_nights <= 30) #48137
@@ -275,7 +268,9 @@ airbnb_model %>% filter(price > 500) %>% nrow() # 1012 out of 48137
 
 price_less_than_500 = airbnb_model %>% filter(price < 500 ) 
 
-ggplot(price_less_than_500,aes(x = price)) + geom_histogram() + scale_x_continuous(breaks = seq(0,500, by = 40)) 
+ggplot(price_less_than_500,aes(x = price)) + geom_histogram() + scale_x_continuous(breaks = seq(0,500, by = 40))
+dev.copy(png,"price_500.png")
+dev.off()
 # Most of the observations are within $280
 
 
@@ -324,8 +319,6 @@ model_three <- lm(price ~ neighbourhood_group + latitude + longitude + room_type
 
 summary(model_three)
 
-model_three
-
 
 # Make predictions
 predictions <- predict(model_three,newdata = test_data_new)
@@ -361,7 +354,13 @@ RMSE
 
 #RMSE 42.03 with no CV
 
+model_four
+
 ```
+
+
+
+
 
 
 ### Model four with CV
@@ -369,7 +368,7 @@ RMSE
 ```{r,warning=FALSE}
 set.seed(80)
 
-train.control <- trainControl(method = "cv", number = 3)
+train.control <- trainControl(method = "cv", number = 5)
 
 model_four_cv <- train(price ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + availability_365 + miles , data = airbnb_new_model,trainControl = train.control,method = "lm") # Everything apart from miles
 
@@ -403,10 +402,13 @@ airbnb_eth_model = airbnb_eth_model %>% filter(price <= 269)
 
 airbnb_eth_model = cbind(airbnb_new_model,ethnicity = airbnb_eth_model$race)
 
+airbnb_eth_model$ethnicity = as.factor(airbnb_eth_model$ethnicity)
+
 #dim(airbnb_eth_model)
 
 
 #colnames(airbnb_eth_model)
+
 
 ```
 
@@ -430,6 +432,53 @@ summary(model_eth)
 ### Etnicity not very significant ####
 
 ```
+
+
+### English names vs Non-English
+
+```{r}
+dummy_ethnicity <- one_hot(as.data.table(airbnb_eth_model$ethnicity))
+
+airbnb_reduced_model <- cbind(airbnb_eth_model,dummy_ethnicity)
+
+airbnb_reduced_model <- airbnb_reduced_model[,c(1:19,25)]
+
+airbnb_reduced_model$English = airbnb_reduced_model$`V1_GreaterEuropean,British`
+
+airbnb_reduced_model <- airbnb_reduced_model[,c(1:19,21)]
+
+
+
+```
+
+
+```{r}
+
+set.seed(101)
+
+sample <- sample.int(n = nrow(airbnb_reduced_model), size = floor(.70*nrow(airbnb_reduced_model)), replace = F)
+training_data_red <- airbnb_reduced_model[sample, ]
+test_data_red  <- airbnb_reduced_model[-sample, ]
+
+
+model_red_eth <- lm(price ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + availability_365 + miles + English , data = training_data_red) 
+
+summary(model_red_eth)
+
+
+# Make predictions
+predictions <- predict(model_red_eth,newdata = test_data_red)
+
+error <- (test_data_red$price) - predictions
+
+RMSE <- sqrt(mean(error^2))
+
+RMSE 
+
+### Hosts with english names, on average, charge $2.06 more than hosts with non-english names.
+
+```
+
 
 
 
@@ -1068,32 +1117,3 @@ h2o.mse(best_model_perf) %>% sqrt()
 #h2o.shutdown()
 
 ```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
