@@ -268,7 +268,8 @@ airbnb_model %>% filter(price > 500) %>% nrow() # 1012 out of 48137
 
 price_less_than_500 = airbnb_model %>% filter(price < 500 ) 
 
-ggplot(price_less_than_500,aes(x = price)) + geom_histogram() + scale_x_continuous(breaks = seq(0,500, by = 40))
+b = ggplot(price_less_than_500,aes(x = price)) + geom_histogram() + scale_x_continuous(breaks = seq(0,500, by = 40))
+b
 dev.copy(png,"price_500.png")
 dev.off()
 # Most of the observations are within $280
@@ -292,6 +293,12 @@ quantile(airbnb_model$price,0.90) #90 percent of the prices fall within $269.
 ```{r}
 
 airbnb_new_model = airbnb_model %>% filter(price <= 269)
+ggplot(airbnb_new_model,aes(x = price)) + geom_histogram() + scale_x_continuous(breaks = seq(0,500, by = 40))
+dev.copy(png,"price_no_outliers_2.png")
+dev.off()
+```
+
+```{r}
 
 hist(airbnb_new_model$price,col = "green",main = "Distribution of price with prices greater than $269 removed",xlab = "Price",border = "blue") 
 
