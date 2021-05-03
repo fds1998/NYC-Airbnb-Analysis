@@ -1,0 +1,696 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(geosphere)
+library(parallel)
+library(corrgram)
+library(corrplot)
+library(mltools)
+library(data.table)
+library(boot) #for cross validation
+```
+
+```{r}
+airbnb = read.csv('Airbnb_NYC_2019.csv')
+airbnb = airbnb %>% select(-c(host_name, name, last_review))
+subway = read.csv('nyc-transit-subway-entrance-and-exit-data.csv')
+```
+
+```{r}
+bnb_locations = tibble(listing = airbnb$id,
+                       along = airbnb$longitude,
+                       alat = airbnb$latitude)
+bnb_locations = distinct(bnb_locations,listing, .keep_all = TRUE)
+subway_locations = tibble(station = subway$Station.Name,
+                   slong = subway$Station.Longitude,
+                   slat = subway$Station.Latitude)
+subway_locations = distinct(subway_locations, station, .keep_all = TRUE)
+```
+
+###################### Sample for testing ############################
+ 
+```{r}
+bnb_test = bnb_locations %>% sample_n(5)
+sub_test = subway_locations %>% sample_n(5)
+```
+
+```{r}
+bnb_test[,2:3]
+sub_test[,2:3]
+distmatrix_test = distm(bnb_test[,2:3], sub_test[,2:3])
+distmatrix_test
+colnames(distmatrix_test) <- sub_test$station
+rownames(distmatrix_test) <- bnb_test$listing
+distmatrix_test
+```
+
+```{r}
+getClosestStation = function(distmatrix, x){
+  station = colnames(distmatrix)[which.min(x)]
+  distance_miles = min(x)/1609.34
+  tibble(station = station, miles = distance_miles)
+}
+
+apply(distmatrix_test, 1, function(x) getClosestStation(distmatrix_test, x)) %>% bind_rows()
+```
+#####################################################################
+
+```{r}
+distmatrix = distm(bnb_locations[,2:3], subway_locations[,2:3])
+colnames(distmatrix) <- subway_locations$station
+rownames(distmatrix) <- bnb_locations$listing
+```
+
+
+```{r}
+
+airbnb_wdist = apply(distmatrix, 1, function(x) getClosestStation(distmatrix, x)) %>% bind_rows()
+airbnb_wdist
+```
+
+```{r}
+airbnb = read.csv('Airbnb_NYC_2019.csv')
+airbnb_all = cbind(airbnb, airbnb_wdist)
+glimpse(airbnb_all)
+
+#write.csv(airbnb_all,'C:/Users/dlsim/Documents/_College/1 UC Davis/4 Senior Year/Spr - STA 160 - Practice in Data Science/160 - Airbnb/AirbnbStudy/airbnb_wdistances.csv')
+```
+
+
+#### Model Building #####
+
+## LINEAR REGRESSION ###
+
+```{r}
+
+# Checking for NAs in all columns
+
+sapply(airbnb_all, function(x) sum(is.na(x)))
+
+# Replacing NAs in reviews_per_month with 0
+
+airbnb_all = airbnb_all %>% mutate(reviews_per_month = replace_na(reviews_per_month, 0))
+
+summary(log(airbnb_all$price))
+
+
+
+# Getting rid of rows with price = 0  (Does not help i analysis)
+
+airbnb_all =(airbnb_all[(airbnb_all$price != 0), ])
+
+
+
+# Now we get rid of the columns which have no bearing on predicting price
+
+airbnb_all %>% glimpse()
+
+min_nights_365 = airbnb_all %>% filter(minimum_nights <= 365)
+min_nights_365 #48870 out of 48884
+
+ggplot(min_nights_365,aes(x = minimum_nights)) + geom_histogram() + scale_x_continuous(breaks = seq(0,365, by = 40)) # most nights within 30 
+
+min_nights_30 = airbnb_all %>% filter(minimum_nights <= 30) #48137
+
+# (48870-48137)/48884 = 1.5% of the data has min_nights > 30. Hence we get rid of those rows
+
+
+airbnb_model = airbnb_all %>% filter(minimum_nights <= 30)
+#hist(airbnb_model$minimum_nights)
+
+
+
+```
+
+
+
+```{r}
+
+### CORRPLOT #####
+
+airbnb_corplot <- airbnb_model[, sapply(airbnb_model, is.numeric)]
+#airbnb_corplot <- airbnb_corplot[complete.cases(airbnb_corplot), ]
+correlation_matrix <- cor(airbnb_corplot)
+corrplot(correlation_matrix, method = "number")
+
+
+
+```
+
+
+### Building the model - without removing outliers in price #####
+
+## Splitting the data 
+
+```{r}
+set.seed(101)
+
+# Now Selecting 70% of data as sample from total 'n' rows of the data  
+
+sample <- sample.int(n = nrow(airbnb_model), size = floor(.70*nrow(airbnb_model)), replace = F)
+training_data <- airbnb_model[sample, ]
+test_data  <- airbnb_model[-sample, ]
+
+```
+
+## Model 1 (Using all the available regressors)
+
+```{r}
+
+# Dropping unnecessary columns
+
+training_data = training_data %>% select(-c(id, host_id, host_name, station ))
+
+test_data = test_data %>% select(-c(id, host_id, host_name, station ))
+
+model_one <- lm((price) ~ neighbourhood_group + latitude + longitude + room_type + minimum_nights + number_of_reviews + last_review + reviews_per_month + calculated_host_listings_count + availability_365 , data = training_data) # Everything apart from miles, (one hot encoding of neighbourhood group, room_type) and neighbourhood
+
+summary(model_one)
+
+# Last review is not significant 
+
+
+
+
+
+```
+
+
+# Model 2 (without last review)
+
+```{r}
+
+model_two <- lm(price ~ neighbourhood_group + latitude + longitude + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + availability_365 , data = training_data) # Everything apart from miles, (one hot encoding of neighbourhood group, room_type) and neighbourhood
+
+summary(model_two)
+
+
+# Make predictions
+predictions <- predict(model_two,newdata = test_data)
+
+error <- (test_data$price) - predictions
+
+RMSE <- sqrt(mean(error^2))
+
+RMSE 
+
+# 200.45
+
+```
+
+
+## Model 3 - With miles
+
+```{r}
+
+model_three <- lm((price) ~ neighbourhood_group + latitude + longitude + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + availability_365 + miles , data = training_data) # Everything apart from miles, (one hot encoding of neighbourhood group, room_type) and neighbourhood
+
+summary(model_three)
+
+
+# Make predictions
+predictions <- (predict(model_three,newdata = test_data))
+
+error <- (test_data$price) - predictions
+
+RMSE <- sqrt(mean(error^2))
+
+RMSE
+
+# 200.43 not much improvement with the addition of miles
+
+
+```
+
+
+
+
+```{r}
+
+hist(airbnb_model$price) # highly skewed
+summary(airbnb$price)
+
+
+airbnb_model %>% filter(price > 500) %>% nrow() # 1012 out of 48137
+
+price_less_than_500 = airbnb_model %>% filter(price < 500 ) 
+
+ggplot(price_less_than_500,aes(x = price)) + geom_histogram() + scale_x_continuous(breaks = seq(0,500, by = 40)) 
+# Most of the observations are within $280
+
+
+quantile(airbnb_model$price,0.90) #90 percent of the prices fall within $269.
+
+# Hence we remove all the observations with prices > 269
+
+
+#airbnb_model %>% filter(price > 269) %>% nrow() # 4792 observations
+
+
+```
+
+
+### Model building with outliers in price removed
+
+```{r}
+
+airbnb_new_model = airbnb_model %>% filter(price <= 269)
+
+
+set.seed(101)
+
+# Now Selecting 70% of data as sample from total 'n' rows of the data
+# 70-30 split
+
+sample <- sample.int(n = nrow(airbnb_new_model), size = floor(.70*nrow(airbnb_new_model)), replace = F)
+training_data_new <- airbnb_new_model[sample, ]
+test_data_new  <- airbnb_new_model[-sample, ]
+
+
+```
+
+
+# Model 4
+
+```{r}
+
+model_four <- lm(price ~ neighbourhood_group + latitude + longitude + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + availability_365 , data = training_data_new) # Everything apart from miles
+
+summary(model_four)
+
+model_four
+
+
+# Make predictions
+predictions <- predict(model_four,newdata = test_data_new)
+
+error <- (test_data_new$price) - predictions
+
+RMSE <- sqrt(mean(error^2))
+
+RMSE 
+
+# RMSE = 41.23
+
+```
+
+### Model 5: Since the coefficients are not interpretable due to the latitude and longitude values (potentially), we get rid of those two regressors and add miles as the additional variable which takes into account the distance of the nearest subway station for each listing.
+
+```{r}
+
+model_five <- lm(price ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + availability_365 + miles , data = training_data_new) # Everything apart from miles
+
+summary(model_five)
+
+
+# Make predictions
+predictions <- predict(model_five,newdata = test_data_new)
+
+error <- (test_data_new$price) - predictions
+
+RMSE <- sqrt(mean(error^2))
+
+RMSE 
+
+#RMSE 42.03
+
+```
+
+### Model 6 ###### 
+
+```{r}
+
+model_six <- lm(price ~ neighbourhood_group + neighbourhood + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + availability_365 + miles , data = training_data_new) # Everything apart from miles
+
+#summary(model_six)
+
+
+
+# Make predictions
+
+x = test_data_new %>% filter(neighbourhood != "Neponsit" & neighbourhood != "New Dorp" & neighbourhood != "Richmondtown" )
+
+predictions <- predict(model_six, x)
+
+error <- (test_data_new$price) - predictions
+
+RMSE <- sqrt(mean(error^2))
+
+RMSE 
+
+# RMSE = 64.26
+```
+
+
+
+######################### Logit Regression ##########################
+```{r}
+#logistic regression on price
+#affordable, medium, expensive, very expensive
+summary(airbnb_all$price)
+# affordable (10, 69)
+quantile(airbnb_all$price,0.25)
+# medium (69, 106)
+quantile(airbnb_all$price, 0.50)
+# expensive (106,269)
+quantile(airbnb_all$price, 0.75)
+# very expensive (269, )
+
+airbnb_all_pricelogit = airbnb_all %>%
+  mutate(affordable = case_when(
+    price < 69 ~ 1,
+    TRUE ~ 0
+  ), medium = case_when(
+    (price >= 69 & price < 106) ~ 1,
+    TRUE ~ 0
+  ), expensive = case_when(
+    (price >= 106 & price < 175) ~ 1,
+    TRUE ~ 0
+  ), very_expensive = case_when(
+    (price >= 175) ~ 1,
+    TRUE ~ 0
+  )
+)
+
+airbnb_all_pricelogit %>% transmute(price, affordable, medium, expensive, very_expensive) %>% colSums()
+
+View(airbnb_all_pricelogit)
+```
+
+```{r}
+#logistic regression using glm()
+
+set.seed(98)
+sample <- sample.int(n = nrow(airbnb_all_pricelogit), size = floor(.70*nrow(airbnb_all_pricelogit)), replace = F)
+
+
+training_data_logit <- airbnb_all_pricelogit[sample, ]
+test_data_logit  <- airbnb_all_pricelogit[-sample, ]
+
+logit_affordable = glm(affordable ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + availability_365 + miles, data = training_data_logit, family = "binomial")
+
+summary(logit_affordable)
+```
+
+```{r}
+predicted_affordable = predict.glm(logit_affordable, test_data_logit, type = "response")
+predicted_affordable = ifelse(predicted_affordable > 0.5, 1, 0)
+
+mean(predicted_affordable == test_data_logit$affordable)
+table(predicted_affordable,test_data_logit$affordable)
+```
+
+# Cross Validation
+#first component = raw cross validation estimate of prediction error
+#second component = adjusted cross validation estimate
+```{r}
+logit_affordable2 = glm(affordable ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + availability_365 + miles, data = airbnb_all_pricelogit, family = "binomial")
+
+cv.glm(airbnb_all_pricelogit, logit_affordable2, K = 5)$delta
+``` 
+
+```{r}
+logit_medium = glm(medium ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + availability_365 + miles, data = airbnb_all_pricelogit, family = "binomial")
+
+cv.glm(airbnb_all_pricelogit, logit_medium, K = 5)$delta
+``` 
+
+```{r}
+logit_expensive = glm(expensive ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + availability_365 + miles, data = airbnb_all_pricelogit, family = "binomial")
+
+cv.glm(airbnb_all_pricelogit, logit_expensive, K = 5)$delta
+``` 
+
+```{r}
+logit_very_expensive = glm(very_expensive ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + availability_365 + miles, data = airbnb_all_pricelogit, family = "binomial")
+
+cv.glm(airbnb_all_pricelogit, logit_very_expensive, K = 5)$delta
+``` 
+
+#### Logistic regression for availabilty ######
+
+```{r}
+
+#logistic regression on availability
+# short-rental, medium-rental, long-rental 
+summary(airbnb_all$availability_365)
+
+airbnb_all_availabiltiylogit = airbnb_all %>%
+  mutate(short_rental = case_when(
+    availability_365 <= 30 ~ 1,
+    TRUE ~ 0
+  ), medium_rental= case_when(
+    (availability_365 > 30 & availability_365 <= 180) ~ 1,
+    TRUE ~ 0
+  ), long_rental = case_when(
+    (availability_365 > 180) ~ 1,
+    TRUE ~ 0
+  )
+)
+airbnb_all_availabiltiylogit %>% transmute(availability_365, short_rental, medium_rental, long_rental) %>% colSums()
+
+#View(airbnb_all_availabiltiylogit)
+
+
+
+```
+
+```{r}
+#logistic regression using glm()
+
+set.seed(123)
+sample <- sample.int(n = nrow(airbnb_all_availabiltiylogit), size = floor(.70*nrow(airbnb_all_availabiltiylogit)), replace = F)
+training_data_logit <- airbnb_all_availabiltiylogit[sample, ]
+test_data_logit  <- airbnb_all_availabiltiylogit[-sample, ]
+logit_short_rental = glm(short_rental ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + miles, data = training_data_logit, family = "binomial")
+
+
+
+
+```
+
+
+
+```{r}
+predicted_short_rental = predict.glm(logit_short_rental, test_data_logit, type = "response")
+predicted_short_rental = ifelse(predicted_short_rental > 0.5, 1, 0)
+mean(predicted_short_rental == test_data_logit$short_rental)
+table(predicted_short_rental,test_data_logit$short_rental)
+
+```
+
+# Cross Validation
+```{r}
+
+logit_short_rental2 = glm(short_rental ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + miles, data = airbnb_all_availabiltiylogit, family = "binomial")
+cv.glm(airbnb_all_availabiltiylogit, logit_short_rental2, K = 5)$delta
+
+#summary(airbnb_all_availabiltiylogit$short_rental)
+
+``` 
+
+
+
+
+# Medium Rental
+
+
+```{r}
+#logistic regression using glm()
+
+set.seed(123)
+sample <- sample.int(n = nrow(airbnb_all_availabiltiylogit), size = floor(.70*nrow(airbnb_all_availabiltiylogit)), replace = F)
+training_data_logit <- airbnb_all_availabiltiylogit[sample, ]
+test_data_logit  <- airbnb_all_availabiltiylogit[-sample, ]
+logit_medium_rental = glm(medium_rental ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + miles, data = training_data_logit, family = "binomial")
+
+
+
+```
+
+
+
+```{r}
+predicted_medium_rental = predict.glm(logit_medium_rental, test_data_logit, type = "response")
+predicted_medium_rental = ifelse(predicted_medium_rental > 0.5, 1, 0)
+mean(predicted_medium_rental == test_data_logit$medium_rental)
+table(predicted_medium_rental,test_data_logit$medium_rental)
+
+```
+
+# Cross Validation
+```{r}
+
+logit_medium_rental2 = glm(medium_rental ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + miles, data = airbnb_all_availabiltiylogit, family = "binomial")
+cv.glm(airbnb_all_availabiltiylogit, logit_medium_rental2, K = 5)$delta
+
+``` 
+
+
+# Long rental 
+
+```{r}
+#logistic regression using glm()
+
+set.seed(123)
+sample <- sample.int(n = nrow(airbnb_all_availabiltiylogit), size = floor(.70*nrow(airbnb_all_availabiltiylogit)), replace = F)
+training_data_logit <- airbnb_all_availabiltiylogit[sample, ]
+test_data_logit  <- airbnb_all_availabiltiylogit[-sample, ]
+logit_long_rental = glm(long_rental ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + miles, data = training_data_logit, family = "binomial")
+
+
+
+```
+
+
+
+```{r}
+predicted_long_rental = predict.glm(logit_long_rental, test_data_logit, type = "response")
+predicted_long_rental = ifelse(predicted_long_rental > 0.5, 1, 0)
+mean(predicted_long_rental == test_data_logit$long_rental)
+table(predicted_long_rental,test_data_logit$long_rental)
+
+```
+
+# Cross Validation
+```{r}
+
+logit_long_rental2 = glm(long_rental ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + miles, data = airbnb_all_availabiltiylogit, family = "binomial")
+cv.glm(airbnb_all_availabiltiylogit, logit_long_rental2, K = 5)$delta
+
+``` 
+
+
+### Creating dummy variables #####
+
+```{r}
+#library(mltools)
+#library(data.table)
+
+dummy_roomtype <- one_hot(as.data.table(airbnb_new_model$room_type))
+
+dummy_neighbourhoodgroup <- one_hot(as.data.table(airbnb_new_model$neighbourhood_group))
+
+dummy_neighbourhood <- one_hot(as.data.table(airbnb_new_model$neighbourhood))
+
+cbind(airbnb_new_model,dummy_roomtype)
+
+airbnb_lasso = airbnb_new_model %>% cbind(c(dummy_neighbourhoodgroup,dummy_roomtype,dummy_neighbourhood))
+
+airbnb_lasso = airbnb_lasso %>% select(-c(id,name,host_id,host_name,neighbourhood_group,neighbourhood,latitude,longitude,room_type,last_review,station))
+
+```
+
+
+
+### Splitting data ####
+
+```{r}
+
+set.seed(111)
+
+sample <- sample.int(n = nrow(airbnb_lasso), size = floor(.70*nrow(airbnb_new_model)), replace = F)
+training_lasso <- airbnb_lasso[sample, ]
+test_lasso  <- airbnb_lasso[-sample, ]
+
+
+```
+
+
+
+### Lasso ####
+
+```{r}
+
+#Response Variable
+
+y.train <- training_lasso$price
+
+# Set of predictor variables
+
+x.train <- data.matrix(training_lasso %>% select(-c(price)))
+
+### Fitting the Lasso model ##### (alpha = 1)
+
+#perform k-fold cross-validation (with k = 10) to find optimal lambda value
+cv_model <- cv.glmnet(x.train, y.train, alpha = 1)
+
+#find optimal lambda value that minimizes test MSE
+best_lambda <- cv_model$lambda.min
+best_lambda
+
+# plot(cv_model)
+
+
+#find coefficients of best model
+best_model <- glmnet(x.train, y.train, alpha = 1, lambda = best_lambda)
+coef(best_model)
+
+
+
+y.test <- test_lasso$price
+
+# Set of predictor variables
+
+x.test <- data.matrix(test_lasso %>% select(-c(price)))
+
+y_predicted <- predict.glmnet(best_model, s = best_lambda, newx = x.test)
+
+head(y_predicted)
+
+
+
+# newX <- model.matrix(y.test ~ x.test , data = test_data_new)
+# fit_test<-predict(best_model, newX, s = best_lambda)
+
+error <- (test_lasso$price) - y_predicted
+
+RMSE <- sqrt(mean(error^2))
+
+RMSE  ### 38.98 (lesser than linear reg model 5)
+
+best_model$dev.ratio #0.559 R2. Better than simple linear reg model 5
+
+
+```
+
+## Random Forest ##
+
+```{r}
+set.seed(75)
+airbnb_rf = airbnb_lasso
+
+sample <- sample.int(n = nrow(airbnb_rf), size = floor(.70*nrow(airbnb_rf)), replace = F)
+training_rf <- airbnb_rf[sample, ]
+test_rf  <- airbnb_rf[-sample, ]
+
+
+```
+
+
+```{r}
+#library(randomForest)
+#detach(airbnb_rf)
+
+rf_model <- randomForest(price ~ . ,
+                         data = test ,
+                         mtry=15,
+                         importance=TRUE)
+
+rf_model
+
+```
+
+
+
+
+
+
+
+
+```{r}
+save.image(file = "AirbnbModelFitting_Linear.RData")
+```

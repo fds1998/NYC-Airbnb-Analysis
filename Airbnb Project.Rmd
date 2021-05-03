@@ -1,111 +1,153 @@
----
-title: "Airbnb"
-author: "Ricardo Simpao"
-date: "3/30/2021"
-output: html_document
----
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{r}
+library(randomForest)
 library(tidyverse)
-library(rlang)
-library(devtools)
+library(geosphere)
+library(parallel)
+library(corrgram)
+library(corrplot)
+library(mltools)
+library(data.table)
+library(glmnet)
+library(boot) #for cross validation
 
-library(wru)
-
-
-#outdated
-install_github("cdcrabtree/nomine")
-library(nomine)
+#Visualization
+library(tidyverse)
+library(sf)
+library(leaflet)
+library(viridis)
 ```
 
 ```{r}
-airbnb = read.csv("Airbnb_NYC_2019.csv")
-airbnb = airbnb %>% mutate(host_name = as.character(host_name))
-names(airbnb)
-View(airbnb)
-```
-# Data Exploration
+airbnb_all = read.csv('airbnb_wdistances.csv')
+nysubways = read.csv('nyc-transit-subway-entrance-and-exit-data.csv')
+ethnames = read.csv('EthnicityPredictions.csv')
+# Checking for NAs in all columns
 
-```{r}
-sum(is.na(airbnb$name))
+sapply(airbnb_all, function(x) sum(is.na(x)))
 
-colSums(is.na(airbnb)) %>% as.data.frame()
-```
-# Deal with NAs
+#
 
-```{r}
-airbnb = airbnb %>% mutate(reviews_per_month = replace_na(airbnb$reviews_per_month, 0))
-#works
-#sum(is.na(test))
+# Replacing NAs in reviews_per_month with 0
+
+airbnb_all = airbnb_all %>% mutate(reviews_per_month = replace_na(reviews_per_month, 0),
+                                   host_name = as.character(host_name))
+
 ```
 
-#Deal with listing ames
 ```{r}
-head(airbnb$name)
-``` 
+summary(log(airbnb_all$price))
 
-#Deal with name of person
+
+
+# Getting rid of rows with price = 0  (Does not help i analysis)
+
+airbnb_all =(airbnb_all[(airbnb_all$price != 0), ])
+
+
+
+# Now we get rid of the columns which have no bearing on predicting price
+
+airbnb_all %>% glimpse()
+
+min_nights_365 = airbnb_all %>% filter(minimum_nights <= 365)
+min_nights_365 #48870 out of 48884
+
+ggplot(min_nights_365,aes(x = minimum_nights)) + geom_histogram() + scale_x_continuous(breaks = seq(0,365, by = 40)) # most nights within 30 
+
+min_nights_30 = airbnb_all %>% filter(minimum_nights <= 30) #48137
+
+# (48870-48137)/48884 = 1.5% of the data has min_nights > 30. Hence we get rid of those rows
+
+
+airbnb_model = airbnb_all %>% filter(minimum_nights <= 30)
+```
+
+# Airbnb new model
 ```{r}
-head(airbnb$host_name,10)
-# Ãº
+airbnb_new_model = airbnb_model %>% filter(price <= 269)
+```
+
+
+#Preprocessing airbnb names
+```{r}
 dirt = c("Ãº","&","")
 
-#names with &
-needfix = airbnb[grep("&", airbnb$host_name),]
+airbnb_all$host_name_clean = airbnb_all %>% transmute(host_name = case_when(
+    grepl(" (And|Or|&) ", host_name) ~ gsub("(.+?)(And|Or|&).*", "\\1", host_name),
+    grepl("(&|\\+|/)", host_name) ~ gsub("(.+?)(\\+).*", "\\1", host_name),
+    TRUE ~ host_name
+  ))
 
-#https://stackoverflow.com/questions/33683862/first-entry-from-string-split
-needfix$host_name = sapply(strsplit(needfix$host_name," &"),`[`,1)
-needfix$host_name = sapply(strsplit(needfix$host_name,"&"),`[`,1)
-needfix$host_name = sapply(strsplit(needfix$host_name,","),`[`,1)
-head(needfix)
-
-
-```
-
-#Histogram
-
- [1] "id"                             "name"                          
- [3] "host_id"                        "host_name"                     
- [5] "neighbourhood_group"            "neighbourhood"                 
- [7] "latitude"                       "longitude"                     
- [9] "room_type"                      "price"                         
-[11] "minimum_nights"                 "number_of_reviews"             
-[13] "last_review"                    "reviews_per_month"             
-[15] "calculated_host_listings_count" "availability_365"
-
-```{r}
-library(ggplot2)
-
-#removed listings beyond the price of 1000
-airbnb_red = airbnb[airbnb$price < 1000,]
-ggplot(airbnb_red, aes(x = price, fill = neighbourhood_group)) + geom_histogram() + facet_grid(neighbourhood_group~.)
-
-sum(airbnb$price > 1000)
-nrow(airbnb)
+#write.csv(airbnb_all, 'airbnb_all_ethn.csv')
+#View(airbnb_all %>% select(host_name, host_name_clean))
 ```
 
 ```{r}
-top10_neighbourhood_bylistings = airbnb %>% 
-  group_by(neighbourhood) %>% 
-  tally() %>% 
-  arrange(desc(n)) %>% 
-  head(10)
-
-airbnb_toplist = airbnb %>% filter(neighbourhood %in% top10_neighbourhood_bylistings$neighbourhood)
-
-#https://stackoverflow.com/questions/16961921/plot-data-in-descending-order-as-appears-in-data-frame
-
-# Histogram of # of listings by neighborhood
-ggplot(top10_neighbourhood_bylistings, aes(x = reorder(neighbourhood, -n), y = n)) + geom_bar(stat = "identity") + coord_flip() + xlab("Neighbourhoods") + ggtitle("Top 10 Neighbourhoods by Listing")
+airbnb_ethnames = airbnb_all %>% mutate(ethnicity = ethnames$race)
+View(airbnb_ethnames %>% select(host_name, ethnicity))
 ```
 
 ```{r}
-airbnb_roomtype_nhgroups = airbnb %>% 
-  group_by(neighbourhood_group, room_type) %>% 
-  summarize(
-    n = n()
+
+```
+
+#Airbnb data with price ranges
+```{r}
+airbnb_all_priceClasses = airbnb_all %>%
+  mutate(price_class = case_when(
+    price < 69 ~ "affordable",
+    (price >= 69 & price < 106) ~ "medium",
+    (price >= 106 & price < 175) ~ "expensive",
+    (price >= 175) ~ "very_expensive",
+    TRUE ~ "NA"
   )
+)
+#airbnb_all_priceClasses$price_class %>% table()
+```
 
-ggplot(airbnb_roomtype_nhgroups, aes(fill = room_type, x = neighbourhood_group, y = n)) + geom_bar(stat = "identity", position = "dodge") + ggtitle("Bar chart of Room Type by Neighbourhood Group")
+#Leaflet map of neighborhood groups + subway locations
+
+```{r}
+pal = colorFactor(palette = c("red","green","blue", "purple","yellow"), domain = airbnb_all$neighbourhood_group)
+
+leaflet(data = airbnb_all) %>% 
+  addProviderTiles(providers$CartoDB.DarkMatterNoLabels) %>% 
+  addCircleMarkers(~longitude, ~latitude, color = ~pal(neighbourhood_group), weight = 1, radius = 1, fillOpacity = 0.1, opacity = 0.1,
+                   label = paste("Name:", airbnb$name)) %>% 
+  addLegend("bottomright", pal = pal, values = ~ neighbourhood_group,
+            title = "Neighborhood groups", opacity = 1) %>%  addCircleMarkers(data = nysubways, ~ Station.Longitude, ~Station.Latitude, color = "orange", weight = 1, radius = 1, fillOpacity = 0.1, opacity = 1,
+                   label = paste("Name:", nysubways$Station.Name))
+```
+
+#Leaflet map of subway locations
+
+```{r}
+glimpse(nysubways)
+table(nysubways$Station.Name)
+
+#pal = colorFactor(palette = c("red","green","blue", "purple","yellow"), domain = airbnb_all$neighbourhood_group)
+
+leaflet(data =nysubways) %>% 
+  addProviderTiles(providers$CartoDB.DarkMatterNoLabels) %>% 
+  addCircleMarkers(~ Station.Longitude, ~Station.Latitude, color = "orange", weight = 1, radius = 1, fillOpacity = 0.1, opacity = 0.1,
+                   label = paste("Name:", nysubways$Station.Name))
+```
+
+#Leaflet map of price classes with subway locations
+
+```{r}
+#airbnb_all_priceClasses
+pal = colorFactor(palette = c("green","yellow","orange","red"), domain = airbnb_all_priceClasses$price_class)
+
+leaflet(data = airbnb_all_priceClasses) %>% 
+  addProviderTiles(providers$CartoDB.DarkMatterNoLabels) %>% 
+  addCircleMarkers(~longitude, ~latitude, color = ~pal(price_class),
+                   weight = 1,
+                   radius = 1,
+                   fillOpacity = 0.1,
+                   opacity = 0.1,
+                   label = paste(airbnb_all_priceClasses$price))%>% 
+  addLegend("bottomright", pal = pal, values = ~ price_class,
+            title = "Price ranges", opacity = 1) %>% addCircleMarkers(data = nysubways, ~ Station.Longitude, ~Station.Latitude, color = "white", weight = 1, radius = 1, fillOpacity = 0.1, opacity = 1,
+                   label = paste("Name:", nysubways$Station.Name))
 ```
