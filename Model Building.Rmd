@@ -592,7 +592,12 @@ cv.glm(airbnb_all_pricelogit, logit_affordable2, K = 5)$delta
 ```{r}
 logit_medium = glm(medium ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + availability_365 + miles + English, data = airbnb_all_pricelogit, family = "binomial")
 cv.glm(airbnb_all_pricelogit, logit_medium, K = 5)$delta
-predicted_medium = predict.glm(logit_medium, test_data_logit, type = "response")
+```
+
+```{r}
+logit_medium2 = glm(medium ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + availability_365 + miles + English, data = training_data_logit, family = "binomial")
+
+predicted_medium = predict.glm(logit_medium2, test_data_logit, type = "response")
 predicted_medium = ifelse(predicted_medium > 0.5, 1, 0)
 mean(predicted_medium == test_data_logit$medium)
 table(predicted_medium,test_data_logit$medium)
@@ -607,7 +612,9 @@ cv.glm(airbnb_all_pricelogit, logit_expensive, K = 5)$delta
 ``` 
 
 ```{r}
-predicted_expensive = predict.glm(logit_expensive, test_data_logit, type = "response")
+logit_expensive2 = glm(expensive ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + availability_365 + miles + English, data = training_data_logit, family = "binomial")
+
+predicted_expensive = predict.glm(logit_expensive2, test_data_logit, type = "response")
 predicted_expensive = ifelse(predicted_expensive > 0.5, 1, 0)
 mean(predicted_expensive == test_data_logit$expensive)
 table(predicted_expensive,test_data_logit$expensive)
@@ -622,7 +629,9 @@ cv.glm(airbnb_all_pricelogit, logit_very_expensive, K = 5)$delta
 ``` 
 
 ```{r}
-predicted_very_expensive = predict.glm(logit_very_expensive, test_data_logit, type = "response")
+logit_very_expensive2 = glm(very_expensive ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + availability_365 + miles + English, data = training_data_logit, family = "binomial")
+
+predicted_very_expensive = predict.glm(logit_very_expensive2, test_data_logit, type = "response")
 predicted_very_expensive = ifelse(predicted_very_expensive > 0.5, 1, 0)
 mean(predicted_very_expensive == test_data_logit$very_expensive)
 table(predicted_very_expensive,test_data_logit$very_expensive)
