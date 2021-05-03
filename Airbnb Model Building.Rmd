@@ -180,13 +180,17 @@ airbnb_model = airbnb_all %>% filter(minimum_nights <= 30)
 
 ### CORRPLOT #####
 
+airbnb_model$id <- as.character(airbnb_model$id)
+airbnb_model$host_id <- as.character(airbnb_model$host_id)
+
 airbnb_corplot <- airbnb_model[, sapply(airbnb_model, is.numeric)]
-#airbnb_corplot <- airbnb_corplot[complete.cases(airbnb_corplot), ]
 correlation_matrix <- cor(airbnb_corplot)
 corrplot(correlation_matrix, method = "color")
 
 dev.copy(png,'corrplot.png')
 dev.off()
+
+
 
 ```
 
@@ -268,8 +272,7 @@ airbnb_model %>% filter(price > 500) %>% nrow() # 1012 out of 48137
 
 price_less_than_500 = airbnb_model %>% filter(price < 500 ) 
 
-b = ggplot(price_less_than_500,aes(x = price)) + geom_histogram() + scale_x_continuous(breaks = seq(0,500, by = 40))
-b
+ggplot(price_less_than_500,aes(x = price)) + geom_histogram() + scale_x_continuous(breaks = seq(0,500, by = 40))
 dev.copy(png,"price_500.png")
 dev.off()
 # Most of the observations are within $280
@@ -293,12 +296,6 @@ quantile(airbnb_model$price,0.90) #90 percent of the prices fall within $269.
 ```{r}
 
 airbnb_new_model = airbnb_model %>% filter(price <= 269)
-ggplot(airbnb_new_model,aes(x = price)) + geom_histogram() + scale_x_continuous(breaks = seq(0,500, by = 40))
-dev.copy(png,"price_no_outliers_2.png")
-dev.off()
-```
-
-```{r}
 
 hist(airbnb_new_model$price,col = "green",main = "Distribution of price with prices greater than $269 removed",xlab = "Price",border = "blue") 
 
@@ -444,6 +441,8 @@ airbnb_reduced_model <- airbnb_reduced_model[,c(1:18,20)]
 ```
 
 
+### Final model 
+
 ```{r}
 
 set.seed(101)
@@ -466,8 +465,7 @@ error <- (test_data_red$price) - predictions
 RMSE <- sqrt(mean(error^2))
 
 
-
-RMSE
+RMSE # 41.34
 
 ### Hosts with english names, on average, charge $2.06 more than hosts with non-english names.
 
@@ -560,7 +558,6 @@ airbnb_all_pricelogit %>% transmute(price, affordable, medium, expensive, very_e
 ```
 
 
-
 ```{r}
 #logistic regression using glm()
 set.seed(98)
@@ -569,7 +566,6 @@ training_data_logit <- airbnb_all_pricelogit[sample, ]
 test_data_logit  <- airbnb_all_pricelogit[-sample, ]
 logit_affordable = glm(affordable ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + availability_365 + miles + English, data = training_data_logit, family = "binomial")
 #summary(logit_affordable)
-
 ```
 
 
@@ -596,7 +592,6 @@ cv.glm(airbnb_all_pricelogit, logit_medium, K = 5)$delta
 
 ```{r}
 logit_medium2 = glm(medium ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + availability_365 + miles + English, data = training_data_logit, family = "binomial")
-
 predicted_medium = predict.glm(logit_medium2, test_data_logit, type = "response")
 predicted_medium = ifelse(predicted_medium > 0.5, 1, 0)
 mean(predicted_medium == test_data_logit$medium)
@@ -613,7 +608,6 @@ cv.glm(airbnb_all_pricelogit, logit_expensive, K = 5)$delta
 
 ```{r}
 logit_expensive2 = glm(expensive ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + availability_365 + miles + English, data = training_data_logit, family = "binomial")
-
 predicted_expensive = predict.glm(logit_expensive2, test_data_logit, type = "response")
 predicted_expensive = ifelse(predicted_expensive > 0.5, 1, 0)
 mean(predicted_expensive == test_data_logit$expensive)
@@ -628,149 +622,16 @@ logit_very_expensive = glm(very_expensive ~ neighbourhood_group + room_type + mi
 cv.glm(airbnb_all_pricelogit, logit_very_expensive, K = 5)$delta
 ``` 
 
+
+
 ```{r}
 logit_very_expensive2 = glm(very_expensive ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + availability_365 + miles + English, data = training_data_logit, family = "binomial")
-
 predicted_very_expensive = predict.glm(logit_very_expensive2, test_data_logit, type = "response")
 predicted_very_expensive = ifelse(predicted_very_expensive > 0.5, 1, 0)
 mean(predicted_very_expensive == test_data_logit$very_expensive)
 table(predicted_very_expensive,test_data_logit$very_expensive)
-```
-
-
-#### Logistic regression for availabilty ######
-
-```{r}
-
-#logistic regression on availability
-# short-rental, medium-rental, long-rental 
-summary(airbnb_all$availability_365)
-
-airbnb_all_availabiltiylogit = airbnb_all %>%
-  mutate(short_rental = case_when(
-    availability_365 <= 30 ~ 1,
-    TRUE ~ 0
-  ), medium_rental= case_when(
-    (availability_365 > 30 & availability_365 <= 180) ~ 1,
-    TRUE ~ 0
-  ), long_rental = case_when(
-    (availability_365 > 180) ~ 1,
-    TRUE ~ 0
-  )
-)
-airbnb_all_availabiltiylogit %>% transmute(availability_365, short_rental, medium_rental, long_rental) %>% colSums()
-
-#View(airbnb_all_availabiltiylogit)
-
-
 
 ```
-
-
-
-```{r,warning=FALSE}
-#logistic regression using glm()
-
-set.seed(123)
-sample <- sample.int(n = nrow(airbnb_all_availabiltiylogit), size = floor(.70*nrow(airbnb_all_availabiltiylogit)), replace = F)
-training_data_logit <- airbnb_all_availabiltiylogit[sample, ]
-test_data_logit  <- airbnb_all_availabiltiylogit[-sample, ]
-logit_short_rental = glm(short_rental ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + miles + English, data = training_data_logit, family = "binomial")
-
-
-```
-
-
-
-```{r}
-predicted_short_rental = predict.glm(logit_short_rental, test_data_logit, type = "response")
-predicted_short_rental = ifelse(predicted_short_rental > 0.5, 1, 0)
-mean(predicted_short_rental == test_data_logit$short_rental)
-table(predicted_short_rental,test_data_logit$short_rental)
-
-```
-
-# Cross Validation
-```{r,warning=FALSE}
-
-logit_short_rental2 = glm(short_rental ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + miles + English, data = airbnb_all_availabiltiylogit, family = "binomial")
-cv.glm(airbnb_all_availabiltiylogit, logit_short_rental2, K = 5)$delta
-
-#summary(airbnb_all_availabiltiylogit$short_rental)
-
-``` 
-
-
-
-
-# Medium Rental
-
-
-```{r}
-#logistic regression using glm()
-
-set.seed(123)
-sample <- sample.int(n = nrow(airbnb_all_availabiltiylogit), size = floor(.70*nrow(airbnb_all_availabiltiylogit)), replace = F)
-training_data_logit <- airbnb_all_availabiltiylogit[sample, ]
-test_data_logit  <- airbnb_all_availabiltiylogit[-sample, ]
-logit_medium_rental = glm(medium_rental ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + miles + English, data = training_data_logit, family = "binomial")
-
-
-
-```
-
-
-
-```{r}
-predicted_medium_rental = predict.glm(logit_medium_rental, test_data_logit, type = "response")
-predicted_medium_rental = ifelse(predicted_medium_rental > 0.5, 1, 0)
-mean(predicted_medium_rental == test_data_logit$medium_rental)
-table(predicted_medium_rental,test_data_logit$medium_rental)
-
-```
-
-# Cross Validation
-```{r}
-
-logit_medium_rental2 = glm(medium_rental ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + miles + English, data = airbnb_all_availabiltiylogit, family = "binomial")
-cv.glm(airbnb_all_availabiltiylogit, logit_medium_rental2, K = 5)$delta
-
-``` 
-
-
-# Long rental 
-
-```{r}
-#logistic regression using glm()
-
-set.seed(123)
-sample <- sample.int(n = nrow(airbnb_all_availabiltiylogit), size = floor(.70*nrow(airbnb_all_availabiltiylogit)), replace = F)
-training_data_logit <- airbnb_all_availabiltiylogit[sample, ]
-test_data_logit  <- airbnb_all_availabiltiylogit[-sample, ]
-logit_long_rental = glm(long_rental ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + miles + English, data = training_data_logit, family = "binomial")
-
-
-
-```
-
-
-
-```{r}
-predicted_long_rental = predict.glm(logit_long_rental, test_data_logit, type = "response")
-predicted_long_rental = ifelse(predicted_long_rental > 0.5, 1, 0)
-mean(predicted_long_rental == test_data_logit$long_rental)
-table(predicted_long_rental,test_data_logit$long_rental)
-
-```
-
-# Cross Validation
-```{r,warning=FALSE}
-
-logit_long_rental2 = glm(long_rental ~ neighbourhood_group + room_type + minimum_nights + number_of_reviews + reviews_per_month + calculated_host_listings_count + miles + English, data = airbnb_all_availabiltiylogit, family = "binomial")
-cv.glm(airbnb_all_availabiltiylogit, logit_long_rental2, K = 5)$delta
-
-``` 
-
 
 
 ### Creating dummy variables for lasso #####
@@ -950,12 +811,12 @@ rf_no_dummy   #R squared = 0.578, OOB prediction error (MSE) = 1440.389
 
 
 
-### Grid Search for hyperparameter tuning WITH dummy variables ###
+### Grid Search for hyperparameter tuning WITH dummy variables ### (takes time to run)
 
 
 ```{r}
 hyper_grid_2 <- expand.grid(
-  mtry       = seq(15, 200, by = 25),
+  mtry       = seq(15, 150, by = 20),
   node_size  = seq(3, 9, by = 2),
   sampe_size = c(.632, .70, .80),
   OOB_RMSE  = 0
@@ -987,7 +848,7 @@ hyper_grid_2 %>%
 ```
 
 
-### Testing with parameters obtained from the grid search (mtry = 65 and node size = 5)
+### Testing with parameters obtained from the grid search (mtry = 55 and node size = 7)
 
 ```{r,warning=FALSE}
 
@@ -995,9 +856,9 @@ optimal_model <- ranger(
   formula         = price ~ ., 
   data            = training_rf, 
   num.trees       = 500,
-  mtry            = 65,
-  min.node.size   = 5,
-  sample.fraction = .632,
+  mtry            = 55,
+  min.node.size   = 7,
+  sample.fraction = .70,
   importance      = 'impurity'
   )
 
@@ -1008,18 +869,18 @@ optimal_model
 #Ranger result
 
 #Call:
- #ranger(formula = price ~ ., data = training_rf, num.trees = 500,      mtry = 65, min.node.size = 5, sample.fraction = #0.632, importance = "impurity") 
+ #ranger(formula = price ~ ., data = training_rf, num.trees = 500,mtry = 55, min.node.size = 7, sample.fraction = #0.700, importance = "impurity") 
 
 #Type:                             Regression 
 #Number of trees:                  500 
 #Sample size:                      30341 
-#Number of independent variables:  235 
-#Mtry:                             65 
-#Target node size:                 5 
+#Number of independent variables:  236 
+#Mtry:                             55 
+#Target node size:                 7 
 #Variable importance mode:         impurity 
 #Splitrule:                        variance 
-#OOB prediction error (MSE):       1390.888 (37.29)
-#R squared (OOB):                  0.5928842 
+#OOB prediction error (MSE):       1395.37 (37.33)
+#R squared (OOB):                  0.5921 
 
 
 
@@ -1033,7 +894,7 @@ error <- (test_rf$price) - y_predicted$predictions
 
 RMSE <- sqrt(mean(error^2))
 
-RMSE #38.08
+RMSE #37.68
 
 ```
 
@@ -1102,6 +963,8 @@ hyper_grid_3 %>%
 
 
 ```{r}
+
+
 optimal_model_no_dummy <- ranger(
   formula         = price ~ ., 
   data            = training_rf_no_dummy, 
@@ -1113,6 +976,18 @@ optimal_model_no_dummy <- ranger(
   )
 
 optimal_model_no_dummy
+
+new_train = training_rf_no_dummy %>% select(c(-price))
+
+new_test <- test_rf_no_dummy %>% select(c(-price))
+
+y_predicted <- predict(optimal_model_no_dummy, new_test,type = "response")
+
+error <- (test_rf_no_dummy$price) - y_predicted$predictions
+
+RMSE <- sqrt(mean(error^2))
+
+RMSE #38.749
 
 ```
 
@@ -1138,18 +1013,18 @@ train.h2o <- as.h2o(training_rf)
 ```
 
 
-## Setting tuning parameters
+## Setting tuning parameters (takes time to run)
 
 ```{r}
 
 # hyperparameter grid
 hyper_grid.h2o <- list(
   ntrees      = seq(200, 500, by = 100),
-  mtries      = seq(15,205, by = 25),
+  mtries      = seq(15,200, by = 25),
   max_depth   = seq(25, 115, by = 15),
   min_rows    = seq(1, 5, by = 2),
   nbins       = seq(10, 30, by = 5),
-  sample_rate = c(.55, .632, .75)
+  sample_rate = c(.632, .70, .80)
 )
 
 # random grid search criteria
@@ -1183,7 +1058,7 @@ print(grid_perf2)
 
 summary(grid_perf2, show_stack_traces = TRUE)
 
-grid_perf2
+#grid_perf2
 
 ```
 
@@ -1212,8 +1087,7 @@ h2o.mse(best_model_perf) %>% sqrt()
 # Shut down H20 connection 
 
 ```{r}
-#h2o.shutdown()
+h2o.shutdown()
 
 ```
-
 
